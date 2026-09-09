@@ -5,6 +5,9 @@
 
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
+#include "pico/rand.h"
+
+#include "hardware/adc.h"
 
 #include "lwip/ip_addr.h"
 #include "lwip/pbuf.h"
@@ -14,10 +17,14 @@
 #define AP_PASSWORD   "pico2w-demo"
 #define PC_IP         "192.168.4.2"
 #define TCP_PORT      4242
+#define TELEMETRY_INTERVAL_MS 2000
+#define TELEMETRY_LED_ON_MS    200
 
 static struct tcp_pcb *client_pcb = NULL;
 static volatile bool tcp_connected = false;
 static volatile bool tcp_connecting = false;
+static bool telemetry_led_on = false;
+static absolute_time_t telemetry_led_off_time;
 
 static err_t send_text(struct tcp_pcb *pcb, const char *text) {
     err_t err = tcp_write(pcb, text, strlen(text), TCP_WRITE_FLAG_COPY);
@@ -25,6 +32,88 @@ static err_t send_text(struct tcp_pcb *pcb, const char *text) {
         printf("tcp_write failed: %d\n", err);
         return err;
     }
+    return tcp_output(pcb);
+}
+
+static int read_internal_temperature_centi_c(void) {
+    const float conversion_factor = 3.3f / 4095.0f;
+    uint16_t raw = adc_read();
+    float voltage = (float)raw * conversion_factor;
+    float temperature_c = 27.0f - (voltage - 0.706f) / 0.001721f;
+
+    return (int)(temperature_c * 100.0f);
+}
+
+static void flash_telemetry_led(void) {
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, true);
+    telemetry_led_on = true;
+    telemetry_led_off_time = make_timeout_time_ms(TELEMETRY_LED_ON_MS);
+}
+
+static void update_telemetry_led(void) {
+    if (telemetry_led_on &&
+        absolute_time_diff_us(get_absolute_time(), telemetry_led_off_time) <= 0) {
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, false);
+        telemetry_led_on = false;
+    }
+}
+
+static void send_telemetry(struct tcp_pcb *pcb) {
+    char telemetry[128];
+    uint32_t uptime_s = (uint32_t)(to_ms_since_boot(get_absolute_time()) / 1000);
+    int temperature_centi_c = read_internal_temperature_centi_c();
+    int temperature_fraction = temperature_centi_c >= 0
+        ? temperature_centi_c % 100
+        : (-temperature_centi_c) % 100;
+    uint32_t random_value = get_rand_32() % 1000;
+
+    int length = snprintf(
+        telemetry,
+        sizeof(telemetry),
+        "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu\n",
+        (unsigned long)uptime_s,
+        temperature_centi_c / 100,
+        temperature_fraction,
+        (unsigned long)random_value
+    );
+
+    if (length < 0 || length >= (int)sizeof(telemetry)) {
+        printf("telemetry formatting failed\n");
+        return;
+    }
+
+    if (send_text(pcb, telemetry) == ERR_OK) {
+        flash_telemetry_led();
+    }
+}
+
+static err_t send_reply(struct tcp_pcb *pcb, const struct pbuf *p) {
+    static const char prefix[] = "PICO_REPLY: ";
+    char last_char = '\0';
+
+    err_t err = tcp_write(pcb, prefix, sizeof(prefix) - 1, TCP_WRITE_FLAG_COPY);
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    for (const struct pbuf *q = p; q != NULL; q = q->next) {
+        err = tcp_write(pcb, q->payload, q->len, TCP_WRITE_FLAG_COPY);
+        if (err != ERR_OK) {
+            return err;
+        }
+
+        if (q->len > 0) {
+            last_char = ((const char *)q->payload)[q->len - 1];
+        }
+    }
+
+    if (last_char != '\n') {
+        err = tcp_write(pcb, "\n", 1, TCP_WRITE_FLAG_COPY);
+        if (err != ERR_OK) {
+            return err;
+        }
+    }
+
     return tcp_output(pcb);
 }
 
@@ -61,6 +150,11 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
         fwrite(q->payload, 1, q->len, stdout);
     }
     printf("\n");
+
+    err_t reply_err = send_reply(pcb, p);
+    if (reply_err != ERR_OK) {
+        printf("reply failed: %d\n", reply_err);
+    }
 
     pbuf_free(p);
     return ERR_OK;
@@ -128,12 +222,21 @@ int main(void) {
         CYW43_AUTH_WPA2_AES_PSK
     );
 
+    adc_init();
+    adc_set_temp_sensor_enabled(true);
+    adc_select_input(ADC_TEMPERATURE_CHANNEL_NUM);
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, false);
+
     printf("AP started: %s\n", AP_SSID);
     printf("Connect PC, set IP to %s, then start its TCP server.\n", PC_IP);
 
-    absolute_time_t next_send = make_timeout_time_ms(2000);
+    absolute_time_t next_telemetry = make_timeout_time_ms(TELEMETRY_INTERVAL_MS);
 
     while (true) {
+        cyw43_arch_poll();
+        // poll方式のWi-Fi/lwIP処理を進める。
+        cyw43_arch_poll();
+
         // PCサーバが起動していなければ、1秒ごとに接続を再試行
         if (!tcp_connected && !tcp_connecting) {
             cyw43_arch_lwip_begin();
@@ -143,14 +246,14 @@ int main(void) {
 
         // Pico -> PC: 2秒ごとに送信
         if (tcp_connected &&
-            absolute_time_diff_us(get_absolute_time(), next_send) <= 0) {
+            absolute_time_diff_us(get_absolute_time(), next_telemetry) <= 0) {
             cyw43_arch_lwip_begin();
-            send_text(client_pcb, "PICO_TICK\n");
+            send_telemetry(client_pcb);
             cyw43_arch_lwip_end();
-
-            next_send = make_timeout_time_ms(2000);
+            next_telemetry = make_timeout_time_ms(TELEMETRY_INTERVAL_MS);
         }
 
-        sleep_ms(1000);
+        update_telemetry_led();
+        sleep_ms(10);
     }
 }
