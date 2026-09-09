@@ -8,6 +8,7 @@
 #define I2C_SDA_PIN    20
 #define I2C_SCL_PIN    21
 #define I2C_BAUDRATE   400000
+#define I2C_TIMEOUT_US 10000
 // AD0/GND -> 0x68, AD0/VDDIO -> 0x69.
 #define ICM42688_ADDR  0x68
 
@@ -27,12 +28,15 @@ typedef struct {
 
 static bool icm42688_write(uint8_t reg, uint8_t value) {
     uint8_t buffer[] = {reg, value};
-    return i2c_write_blocking(I2C_PORT, ICM42688_ADDR, buffer, 2, false) == 2;
+    return i2c_write_timeout_us(I2C_PORT, ICM42688_ADDR, buffer, 2, false,
+                                I2C_TIMEOUT_US) == 2;
 }
 
 static bool icm42688_read(uint8_t reg, uint8_t *buffer, size_t length) {
-    if (i2c_write_blocking(I2C_PORT, ICM42688_ADDR, &reg, 1, true) != 1) return false;
-    return i2c_read_blocking(I2C_PORT, ICM42688_ADDR, buffer, length, false) == (int)length;
+    if (i2c_write_timeout_us(I2C_PORT, ICM42688_ADDR, &reg, 1, true,
+                             I2C_TIMEOUT_US) != 1) return false;
+    return i2c_read_timeout_us(I2C_PORT, ICM42688_ADDR, buffer, length, false,
+                               I2C_TIMEOUT_US) == (int)length;
 }
 
 static int16_t to_int16(uint8_t msb, uint8_t lsb) {
@@ -89,9 +93,13 @@ int main(void) {
     gpio_pull_up(I2C_SCL_PIN);
 
     sleep_ms(100);
+    printf("Starting ICM-42688 I2C test on GP20/GP21...\n");
     if (!icm42688_init()) {
-        printf("ICM-42688 was not found. Check I2C wiring/address.\n");
-        while (true) sleep_ms(1000);
+        // Repeat this so the message is visible even when the terminal opens late.
+        while (true) {
+            printf("ICM-42688 not found: check 3.3V, GND, SDA=GP20, SCL=GP21, and address.\n");
+            sleep_ms(1000);
+        }
     }
 
     printf("ICM-42688 ready\n");
