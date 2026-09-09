@@ -31,11 +31,13 @@ Pico W（AP / TCPクライアント: 192.168.4.1）
 .
 ├── README.md
 ├── pc_tcp_server.c
-└── pico_ap_tcp_client/
+└── pico_satellite_controller/
     ├── CMakeLists.txt
     ├── pico_sdk_import.cmake
     ├── lwipopts.h
-    ├── pico_ap_tcp_client.c
+    ├── main.c
+    ├── icm42688.c
+    ├── icm42688.h
     ├── .gitignore
     └── .vscode/
 ```
@@ -43,24 +45,25 @@ Pico W（AP / TCPクライアント: 192.168.4.1）
 | ファイル・フォルダー | 役割 |
 | --- | --- |
 | `pc_tcp_server.c` | Windows PCで動くTCPサーバー。キーボード入力をPicoへ送り、コマンド応答とテレメトリを表示する。 |
-| `pico_ap_tcp_client/pico_ap_tcp_client.c` | Pico Wで動く本体コード。AP開始、TCP接続、コマンド応答、テレメトリ送信、LED点滅を行う。 |
-| `pico_ap_tcp_client/CMakeLists.txt` | Pico SDK向けビルド設定。Wi-Fi/lwIP、ADC、乱数、USB Serial Monitorを有効にする。 |
-| `pico_ap_tcp_client/lwipopts.h` | Picoで使用するlwIP（TCP/IPスタック）の設定。 |
-| `pico_ap_tcp_client/pico_sdk_import.cmake` | インストール済みのPico SDKをCMakeから読み込むためのファイル。 |
-| `pico_ap_tcp_client/.vscode/` | Raspberry Pi Pico VS Code拡張機能用のプロジェクト設定。 |
-| `pico_ap_tcp_client/.gitignore` | Picoプロジェクトのビルド生成物をGitの管理対象から外す設定。 |
+| `pico_satellite_controller/main.c` | Pico Wで動く本体コード。AP開始、TCP接続、コマンド応答、テレメトリ送信、LED点滅を行う。 |
+| `pico_satellite_controller/icm42688.c` | ICM-42688のI2C初期化とZ軸角速度取得を行うドライバ。 |
+| `pico_satellite_controller/CMakeLists.txt` | Pico SDK向けビルド設定。Wi-Fi/lwIP、ADC、I2C、乱数、USB Serial Monitorを有効にする。 |
+| `pico_satellite_controller/lwipopts.h` | Picoで使用するlwIP（TCP/IPスタック）の設定。 |
+| `pico_satellite_controller/pico_sdk_import.cmake` | インストール済みのPico SDKをCMakeから読み込むためのファイル。 |
+| `pico_satellite_controller/.vscode/` | Raspberry Pi Pico VS Code拡張機能用のプロジェクト設定。 |
+| `pico_satellite_controller/.gitignore` | Picoプロジェクトのビルド生成物をGitの管理対象から外す設定。 |
 
 ## ビルド
 
 ### Pico W用UF2
 
-1. VS Codeで`pico_ap_tcp_client`フォルダーを開きます。
+1. VS Codeで`pico_satellite_controller`フォルダーを開きます。
 2. Raspberry Pi Pico拡張機能でBoardが`pico_w`であることを確認します。
 3. Buildを実行します。
 4. 成功すると、次のファイルが生成されます。
 
    ```text
-   pico_ap_tcp_client/build/pico_ap_tcp_client.uf2
+   pico_satellite_controller/build/pico_satellite_controller.uf2
    ```
 
 ### Windows PCサーバー
@@ -77,7 +80,7 @@ gcc -Wall -Wextra pc_tcp_server.c -o pc_tcp_server.exe -lws2_32
 
 1. Pico WのBOOTSELボタンを押したままUSBでPCへ接続します。
 2. エクスプローラーに`RPI-RP2`ドライブが表示されたら、BOOTSELを離します。
-3. `pico_ap_tcp_client.uf2`を`RPI-RP2`ドライブ直下へコピーします。
+3. `pico_satellite_controller.uf2`を`RPI-RP2`ドライブ直下へコピーします。
 4. ドライブが自動的に消え、Picoが再起動します。
 
 ### 2. PCをPicoのAPへ接続する

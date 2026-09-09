@@ -1,4 +1,4 @@
-// pico_ap_tcp_client.c
+// main.c
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,7 +13,7 @@
 #include "command.h"
 #include "protocol.h"
 #include "telemetry.h"
-#include "6axes.h"
+#include "icm42688.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"

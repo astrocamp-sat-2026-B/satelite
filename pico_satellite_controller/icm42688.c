@@ -1,10 +1,9 @@
 #include <math.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #include "hardware/i2c.h"
 #include "pico/stdlib.h"
-#include "6axes.h"
+#include "icm42688.h"
 
 // ===== 配線・I2C設定 =====
 // I2C0: GP20 = SDA, GP21 = SCL
@@ -74,20 +73,3 @@ float icm42688_gyro_z_dps(void) {
     return gyro_z / 16.4f; // ±2000 dps時の感度で dps へ換算
 }
 
-#ifndef ICM42688_NO_MAIN
-int main(void) {
-    // ===== 1. セットアップ部分 =====
-    // USBシリアル出力とI2Cを開始し、ICM-42688を初期化する。
-    stdio_init_all();
-    if (!icm42688_init()) {
-        while (true) {
-            printf("ICM-42688 initialization failed\n");
-            sleep_ms(1000);
-        }
-    }
-
-    // ===== 2. 数値を表示し続けるループ =====
-    // 関数から返されたZ軸角速度だけを、100 msごとに1行で表示する。
-    while (true) printf("%.2f\n", icm42688_gyro_z_dps()), sleep_ms(100);
-}
-#endif

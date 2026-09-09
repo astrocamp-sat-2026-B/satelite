@@ -28,32 +28,29 @@ set(PICO_BOARD pico_w CACHE STRING "Board type")
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
 
-project(pico_ap_tcp_client C CXX ASM)
+project(pico_satellite_controller C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(pico_ap_tcp_client
-        pico_ap_tcp_client.c
+add_executable(pico_satellite_controller
+        main.c
         telemetry.c
         protocol.c
         command.c
-        ../6axes/6axes.c)
+        icm42688.c)
 
-# Reuse the ICM-42688 driver without its standalone sample-program main().
-target_compile_definitions(pico_ap_tcp_client PRIVATE ICM42688_NO_MAIN)
-
-pico_set_program_name(pico_ap_tcp_client "pico_ap_tcp_client")
-pico_set_program_version(pico_ap_tcp_client "0.1")
+pico_set_program_name(pico_satellite_controller "pico_satellite_controller")
+pico_set_program_version(pico_satellite_controller "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(pico_ap_tcp_client 0)
-pico_enable_stdio_usb(pico_ap_tcp_client 1)
+pico_enable_stdio_uart(pico_satellite_controller 0)
+pico_enable_stdio_usb(pico_satellite_controller 1)
 
 # Add the standard library to the build
-target_link_libraries(pico_ap_tcp_client
+target_link_libraries(pico_satellite_controller
         pico_stdlib
         hardware_adc
         hardware_i2c
@@ -61,10 +58,9 @@ target_link_libraries(pico_ap_tcp_client
         pico_cyw43_arch_lwip_poll)
 
 # Add the standard include files to the build
-target_include_directories(pico_ap_tcp_client PRIVATE
+target_include_directories(pico_satellite_controller PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
-        ${CMAKE_CURRENT_LIST_DIR}/../6axes
 )
 
-pico_add_extra_outputs(pico_ap_tcp_client)
+pico_add_extra_outputs(pico_satellite_controller)
 

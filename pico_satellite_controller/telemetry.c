@@ -3,7 +3,7 @@
 #include "pico/rand.h"
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
-#include "6axes.h"
+#include "icm42688.h"
 
 static int read_internal_temperature_centi_c(void) {
     const float conversion_factor = 3.3f / 4095.0f;
