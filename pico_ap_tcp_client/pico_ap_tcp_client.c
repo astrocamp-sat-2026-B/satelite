@@ -5,13 +5,14 @@
 
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
-#include "pico/rand.h"
-
-#include "hardware/adc.h"
 
 #include "lwip/ip_addr.h"
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
+
+#include "command.h"
+#include "protocol.h"
+#include "telemetry.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -25,6 +26,8 @@ static volatile bool tcp_connected = false;
 static volatile bool tcp_connecting = false;
 static bool telemetry_led_on = false;
 static absolute_time_t telemetry_led_off_time;
+static protocol_receiver_t command_receiver;
+static command_state_t command_state;
 
 // 送信
 static err_t send_text(struct tcp_pcb *pcb, const char *text) {
@@ -37,15 +40,6 @@ static err_t send_text(struct tcp_pcb *pcb, const char *text) {
 }
 
 // 温度センサ
-static int read_internal_temperature_centi_c(void) {
-    const float conversion_factor = 3.3f / 4095.0f;
-    uint16_t raw = adc_read();
-    float voltage = (float)raw * conversion_factor;
-    float temperature_c = 27.0f - (voltage - 0.706f) / 0.001721f;
-
-    return (int)(temperature_c * 100.0f);
-}
-
 // 送信成功LED
 static void flash_telemetry_led(void) {
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, true);
@@ -64,63 +58,43 @@ static void update_telemetry_led(void) {
 
 // 疑似テレメトリ作成
 static void send_telemetry(struct tcp_pcb *pcb) {
-    char telemetry[128];
-    uint32_t uptime_s = (uint32_t)(to_ms_since_boot(get_absolute_time()) / 1000);
-    int temperature_centi_c = read_internal_temperature_centi_c();
-    int temperature_fraction = temperature_centi_c >= 0
-        ? temperature_centi_c % 100
-        : (-temperature_centi_c) % 100;
-    uint32_t random_value = get_rand_32() % 1000;
+    telemetry_data_t telemetry;
+    char message[PROTOCOL_MAX_MESSAGE_LENGTH];
 
-    int length = snprintf(
-        telemetry,
-        sizeof(telemetry),
-        "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu\n",
-        (unsigned long)uptime_s,
-        temperature_centi_c / 100,
-        temperature_fraction,
-        (unsigned long)random_value
-    );
+    telemetry_collect(&telemetry, command_get_value(&command_state));
 
-    if (length < 0 || length >= (int)sizeof(telemetry)) {
+    if (!protocol_encode_telemetry(&telemetry, message, sizeof(message))) {
         printf("telemetry formatting failed\n");
         return;
     }
 
-    if (send_text(pcb, telemetry) == ERR_OK) {
+    if (send_text(pcb, message) == ERR_OK) {
         flash_telemetry_led();
     }
 }
 
 // 送信応答
-static err_t send_reply(struct tcp_pcb *pcb, const struct pbuf *p) {
-    static const char prefix[] = "PICO_REPLY: ";
-    char last_char = '\0';
+/* This is the boundary between received TCP bytes and application commands. */
+static void handle_ground_command(const char *line, void *context) {
+    char reply[PROTOCOL_MAX_MESSAGE_LENGTH];
+    (void)context;
 
-    err_t err = tcp_write(pcb, prefix, sizeof(prefix) - 1, TCP_WRITE_FLAG_COPY);
+    printf("PC -> Pico: %s\n", line);
+
+    if (!command_handle_line(&command_state, line, reply, sizeof(reply))) {
+        printf("command reply formatting failed\n");
+        return;
+    }
+
+    err_t err = send_text(client_pcb, reply);
     if (err != ERR_OK) {
-        return err;
+        printf("command reply failed: %d\n", err);
     }
+}
 
-    for (const struct pbuf *q = p; q != NULL; q = q->next) {
-        err = tcp_write(pcb, q->payload, q->len, TCP_WRITE_FLAG_COPY);
-        if (err != ERR_OK) {
-            return err;
-        }
-
-        if (q->len > 0) {
-            last_char = ((const char *)q->payload)[q->len - 1];
-        }
-    }
-
-    if (last_char != '\n') {
-        err = tcp_write(pcb, "\n", 1, TCP_WRITE_FLAG_COPY);
-        if (err != ERR_OK) {
-            return err;
-        }
-    }
-
-    return tcp_output(pcb);
+static void receive_ground_bytes(const uint8_t *data, size_t length, void *context) {
+    protocol_receiver_feed(&command_receiver, data, length,
+                           handle_ground_command, context);
 }
 
 static void on_tcp_error(void *arg, err_t err) {
@@ -152,15 +126,8 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
 
     tcp_recved(pcb, p->tot_len);
 
-    printf("PC -> Pico: ");
     for (struct pbuf *q = p; q != NULL; q = q->next) {
-        fwrite(q->payload, 1, q->len, stdout);
-    }
-    printf("\n");
-
-    err_t reply_err = send_reply(pcb, p);
-    if (reply_err != ERR_OK) {
-        printf("reply failed: %d\n", reply_err);
+        receive_ground_bytes((const uint8_t *)q->payload, q->len, NULL);
     }
 
     pbuf_free(p);
@@ -219,6 +186,10 @@ int main(void) {
     stdio_init_all();
     sleep_ms(2000);
 
+    protocol_receiver_init(&command_receiver);
+    command_init(&command_state);
+    telemetry_init();
+
     if (cyw43_arch_init()) {
         printf("Wi-Fi initialization failed\n");
         return 1;
@@ -231,9 +202,6 @@ int main(void) {
         CYW43_AUTH_WPA2_AES_PSK
     );
 
-    adc_init();
-    adc_set_temp_sensor_enabled(true);
-    adc_select_input(ADC_TEMPERATURE_CHANNEL_NUM);
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, false);
 
     printf("AP started: %s\n", AP_SSID);

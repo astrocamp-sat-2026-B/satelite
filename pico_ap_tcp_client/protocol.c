@@ -1,0 +1,48 @@
+#include "protocol.h"
+
+#include <stdio.h>
+
+void protocol_receiver_init(protocol_receiver_t *receiver) {
+    receiver->length = 0;
+}
+
+void protocol_receiver_feed(protocol_receiver_t *receiver, const uint8_t *data,
+                            size_t length, protocol_line_handler_t handler,
+                            void *context) {
+    for (size_t i = 0; i < length; ++i) {
+        char character = (char)data[i];
+
+        if (character == '\r') {
+            continue;
+        }
+
+        if (character == '\n') {
+            receiver->line[receiver->length] = '\0';
+            handler(receiver->line, context);
+            receiver->length = 0;
+        } else if (receiver->length < sizeof(receiver->line) - 1) {
+            receiver->line[receiver->length++] = character;
+        } else {
+            receiver->length = 0;
+        }
+    }
+}
+
+bool protocol_encode_telemetry(const telemetry_data_t *telemetry, char *message,
+                               size_t message_size) {
+    int fraction = telemetry->temperature_centi_c >= 0
+        ? telemetry->temperature_centi_c % 100
+        : (-telemetry->temperature_centi_c) % 100;
+    int length = snprintf(
+        message,
+        message_size,
+        "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld\n",
+        (unsigned long)telemetry->uptime_s,
+        telemetry->temperature_centi_c / 100,
+        fraction,
+        (unsigned long)telemetry->random_value,
+        (long)telemetry->command_value
+    );
+
+    return length >= 0 && (size_t)length < message_size;
+}

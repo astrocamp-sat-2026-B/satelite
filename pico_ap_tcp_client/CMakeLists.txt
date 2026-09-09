@@ -35,7 +35,11 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(pico_ap_tcp_client pico_ap_tcp_client.c )
+add_executable(pico_ap_tcp_client
+        pico_ap_tcp_client.c
+        telemetry.c
+        protocol.c
+        command.c)
 
 pico_set_program_name(pico_ap_tcp_client "pico_ap_tcp_client")
 pico_set_program_version(pico_ap_tcp_client "0.1")
