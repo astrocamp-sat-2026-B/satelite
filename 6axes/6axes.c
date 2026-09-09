@@ -10,7 +10,7 @@
 #define I2C_BAUDRATE   400000
 #define I2C_TIMEOUT_US 10000
 // AD0/GND -> 0x68, AD0/VDDIO -> 0x69.
-#define ICM42688_ADDR  0x68
+#define ICM42688_ADDR  0x69
 
 #define ICM42688_REG_DEVICE_CONFIG  0x11
 #define ICM42688_REG_TEMP_DATA1     0x1D
@@ -43,12 +43,34 @@ static int16_t to_int16(uint8_t msb, uint8_t lsb) {
     return (int16_t)(((uint16_t)msb << 8) | lsb);
 }
 
+static void i2c_scan(void) {
+    bool found = false;
+    uint8_t register_address = ICM42688_REG_WHO_AM_I;
+
+    printf("Scanning I2C bus...\n");
+    for (uint8_t address = 0x08; address < 0x78; ++address) {
+        int result = i2c_write_timeout_us(I2C_PORT, address, &register_address, 1,
+                                          false, I2C_TIMEOUT_US);
+        if (result == 1) {
+            printf("  Device ACK at 0x%02X\n", address);
+            found = true;
+        }
+    }
+    if (!found) printf("  No I2C device responded.\n");
+}
+
 static bool icm42688_init(void) {
     uint8_t who_am_i;
+    if (!icm42688_read(ICM42688_REG_WHO_AM_I, &who_am_i, 1)) {
+        printf("No response at ICM address 0x%02X.\n", ICM42688_ADDR);
+        return false;
+    }
+    printf("WHO_AM_I at 0x%02X = 0x%02X\n", ICM42688_ADDR, who_am_i);
+    if (who_am_i != ICM42688_WHO_AM_I_VALUE) return false;
+
     // Soft reset, then wait for the device to restart.
     if (!icm42688_write(ICM42688_REG_DEVICE_CONFIG, 0x01)) return false;
     sleep_ms(2);
-    if (!icm42688_read(ICM42688_REG_WHO_AM_I, &who_am_i, 1) || who_am_i != ICM42688_WHO_AM_I_VALUE) return false;
 
     // Accel and gyro: low-noise mode.
     if (!icm42688_write(ICM42688_REG_PWR_MGMT0, 0x0F)) return false;
@@ -94,6 +116,7 @@ int main(void) {
 
     sleep_ms(100);
     printf("Starting ICM-42688 I2C test on GP20/GP21...\n");
+    i2c_scan();
     if (!icm42688_init()) {
         // Repeat this so the message is visible even when the terminal opens late.
         while (true) {
