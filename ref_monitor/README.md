@@ -5,6 +5,25 @@ MCP3008(ADC) 経由でフォトリフレクタ(LBR-127HLD, ネット名 REF, CH4
 
 しきい値判定・エッジ検出・RPM算出などは行わない。まずは値の挙動を実測するためのもの。
 
+## ファイル構成
+
+センサ部分と呼び出し側を分離してある。
+
+| ファイル | 役割 |
+| --- | --- |
+| [photoreflector.h](photoreflector.h) | センサモジュールの公開API (`photoreflector_init` / `photoreflector_read_raw`) |
+| [photoreflector.c](photoreflector.c) | センサモジュールの実装。MCP3008(ADC)をSPIで叩く処理を内包 |
+| [main.c](main.c) | 呼び出し側。周期制御(2ms)と出力(raw値をそのままprintf)のみを担当 |
+| [CMakeLists.txt](CMakeLists.txt) | ビルド設定 (通常ビルド / センサ単体ビルドの切り替えを含む) |
+
+`photoreflector.c` は `PHOTOREFLECTOR_TEST_MAIN` を定義してビルドすると、
+ファイル末尾のテスト用 `main()` が有効になり、このファイル単体
+(`main.c` 抜き)でも動作確認できる。
+
+読み取りチャンネルは [photoreflector.c](photoreflector.c) 冒頭の
+`#define CH_PHOTOREFLECTOR 4` で指定。ブレッドボードで単体確認する場合は
+`7` (未使用の空きチャンネル)に書き換える。
+
 ## 配線 (MAIN基板固定・変更禁止)
 
 | 信号 | Pico W GPIO | Pico 物理pin | MCP3008 pin |
@@ -15,9 +34,6 @@ MCP3008(ADC) 経由でフォトリフレクタ(LBR-127HLD, ネット名 REF, CH4
 | MOSI (DIN) | GP19 | 25 | pin11 |
 | VDD / VREF | 3V3(OUT) | 36 | pin16 / pin15 |
 | GND | GND | — | pin9(DGND) / pin14(AGND) |
-
-読み取りチャンネルは [ref_monitor.c](ref_monitor.c) 冒頭の `#define REF_ADC_CH 4` で指定。
-ブレッドボードで単体確認する場合は `7` (未使用の空きチャンネル)に書き換える。
 
 ## ビルド
 
@@ -34,7 +50,12 @@ $env:PICO_SDK_PATH = "$sdkHome\sdk\2.3.1"
 $env:PICO_TOOLCHAIN_PATH = "$sdkHome\toolchain\15_2_Rel1"
 $env:PATH = "$sdkHome\cmake\v4.3.4\bin;$sdkHome\ninja\v1.13.2;$sdkHome\toolchain\15_2_Rel1\bin;$sdkHome\picotool\2.3.1\picotool;$env:PATH"
 
+# 通常ビルド (main.c + photoreflector.c)
 cmake -G Ninja -B build .
+cmake --build build
+
+# センサ単体の動作確認ビルド (photoreflector.c だけ)
+cmake -G Ninja -B build -DPHOTOREFLECTOR_TEST=ON .
 cmake --build build
 ```
 
@@ -46,10 +67,19 @@ export PICO_SDK_PATH="$SDK_HOME/sdk/2.3.1"
 export PICO_TOOLCHAIN_PATH="$SDK_HOME/toolchain/15_2_Rel1"
 export PATH="$SDK_HOME/cmake/v4.3.4/bin:$SDK_HOME/ninja/v1.13.2:$SDK_HOME/toolchain/15_2_Rel1/bin:$SDK_HOME/picotool/2.3.1/picotool:$PATH"
 
+# 通常ビルド
 cmake -B build && cmake --build build
+
+# センサ単体の動作確認ビルド
+cmake -B build -DPHOTOREFLECTOR_TEST=ON && cmake --build build
 ```
 
-成功すると `build/ref_monitor.uf2` が生成される。
+どちらの構成でも `build/ref_monitor.uf2` が生成される
+(ビルドターゲット名は切り替えても `ref_monitor` のまま)。
+
+**構成を切り替えたのにビルドに反映されない場合**は、`build/` ディレクトリを
+削除してから `cmake -B build ...` をやり直すこと(CMakeのキャッシュが
+古い設定を引きずることがある)。
 
 ## 書き込み手順
 
@@ -74,23 +104,30 @@ Windows での確認方法の例:
 - PuTTY や Tera Term、`Serial Monitor` (VS Code拡張) などで該当 COMポートを
   開く
 
-出力例:
+## 出力形式
+
+`main.c` (通常ビルド) は 2ms間隔で raw値のみを1行1サンプルで出力する。
 
 ```
-raw min= 812 max= 998 avg= 964  ( 3.108 V )  p-p=186  |####################################    |
+512
+508
+515
+...
 ```
 
-- `min` / `max`: 100ms ウィンドウ(2ms x 50サンプル)内での最小値・最大値
-- `avg`: 同ウィンドウの平均値とその電圧換算値
-- `p-p`: `max - min` (振れ幅)
-- 末尾のバーは `avg` を 0〜1023 を 0〜40文字にマッピングしたもの
+センサ単体ビルド (`PHOTOREFLECTOR_TEST=ON`) は同じ raw値を100ms間隔で
+出力する(目視で追いやすくするため)。
+
+いずれも異常時(未初期化 / 受信ビット位置ずれ)は `65535`
+(`PHOTOREFLECTOR_INVALID`) が出力される。
 
 ## 実機確認時のチェックポイント
 
 - 値が 0 や 1023 に張り付かず、中間のどこかで安定していれば正常
-- センサ前に指や白い紙をかざして `avg` がはっきり動き、離すと元に戻るか確認
+- センサ前に指や白い紙をかざして値がはっきり動き、離すと元に戻るか確認
 - 反射物を近づけたとき raw値が上がるか下がるか(極性)は実測で確定させる
-- うまく値が出ない/おかしい場合に疑う順番:
+- `65535` が出続ける場合は `photoreflector.c` の `adc_read()` 内、
+  ヌルビット検査(`rx[1] & 0x04`)で弾かれている。以下を疑う:
   1. 共通GND (Pico / MCP3008 / センサ間)
   2. SPIモード (0,0 以外だとビットがずれる)
   3. CS制御 (3バイトの間 Low を保てているか)
