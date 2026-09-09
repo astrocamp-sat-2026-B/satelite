@@ -39,7 +39,11 @@ add_executable(pico_ap_tcp_client
         pico_ap_tcp_client.c
         telemetry.c
         protocol.c
-        command.c)
+        command.c
+        ../6axes/6axes.c)
+
+# Reuse the ICM-42688 driver without its standalone sample-program main().
+target_compile_definitions(pico_ap_tcp_client PRIVATE ICM42688_NO_MAIN)
 
 pico_set_program_name(pico_ap_tcp_client "pico_ap_tcp_client")
 pico_set_program_version(pico_ap_tcp_client "0.1")
@@ -52,12 +56,14 @@ pico_enable_stdio_usb(pico_ap_tcp_client 1)
 target_link_libraries(pico_ap_tcp_client
         pico_stdlib
         hardware_adc
+        hardware_i2c
         pico_rand
         pico_cyw43_arch_lwip_poll)
 
 # Add the standard include files to the build
 target_include_directories(pico_ap_tcp_client PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/../6axes
 )
 
 pico_add_extra_outputs(pico_ap_tcp_client)

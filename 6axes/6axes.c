@@ -4,6 +4,7 @@
 
 #include "hardware/i2c.h"
 #include "pico/stdlib.h"
+#include "6axes.h"
 
 // ===== 配線・I2C設定 =====
 // I2C0: GP20 = SDA, GP21 = SCL
@@ -37,9 +38,16 @@ static bool icm42688_read(uint8_t reg, uint8_t *buffer, size_t length) {
                                I2C_TIMEOUT_US) == (int)length;
 }
 
-static bool icm42688_init(void) {
+bool icm42688_init(void) {
     // ===== ICM-42688の初期化 =====
     // 接続確認後、ジャイロを低ノイズ・±2000 dps・1 kHzに設定する。
+    i2c_init(I2C_PORT, I2C_BAUDRATE);
+    gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(I2C_SDA_PIN);
+    gpio_pull_up(I2C_SCL_PIN);
+    sleep_ms(100);
+
     uint8_t who_am_i;
     if (!icm42688_read(ICM42688_REG_WHO_AM_I, &who_am_i, 1) ||
         who_am_i != ICM42688_WHO_AM_I_VALUE) return false;
@@ -66,16 +74,11 @@ float icm42688_gyro_z_dps(void) {
     return gyro_z / 16.4f; // ±2000 dps時の感度で dps へ換算
 }
 
+#ifndef ICM42688_NO_MAIN
 int main(void) {
     // ===== 1. セットアップ部分 =====
     // USBシリアル出力とI2Cを開始し、ICM-42688を初期化する。
     stdio_init_all();
-    i2c_init(I2C_PORT, I2C_BAUDRATE);
-    gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA_PIN);
-    gpio_pull_up(I2C_SCL_PIN);
-    sleep_ms(100);
     if (!icm42688_init()) {
         while (true) {
             printf("ICM-42688 initialization failed\n");
@@ -87,3 +90,4 @@ int main(void) {
     // 関数から返されたZ軸角速度だけを、100 msごとに1行で表示する。
     while (true) printf("%.2f\n", icm42688_gyro_z_dps()), sleep_ms(100);
 }
+#endif

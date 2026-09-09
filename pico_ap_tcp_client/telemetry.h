@@ -9,6 +9,7 @@ typedef struct {
     int temperature_centi_c;
     uint32_t random_value;
     int32_t command_value;
+    int32_t gyro_z_centi_dps;
 } telemetry_data_t;
 
 void telemetry_init(void);

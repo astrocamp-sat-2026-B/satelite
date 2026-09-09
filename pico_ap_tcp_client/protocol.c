@@ -33,15 +33,20 @@ bool protocol_encode_telemetry(const telemetry_data_t *telemetry, char *message,
     int fraction = telemetry->temperature_centi_c >= 0
         ? telemetry->temperature_centi_c % 100
         : (-telemetry->temperature_centi_c) % 100;
+    int gyro_fraction = telemetry->gyro_z_centi_dps >= 0
+        ? telemetry->gyro_z_centi_dps % 100
+        : (-telemetry->gyro_z_centi_dps) % 100;
     int length = snprintf(
         message,
         message_size,
-        "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld\n",
+        "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=%ld.%02d\n",
         (unsigned long)telemetry->uptime_s,
         telemetry->temperature_centi_c / 100,
         fraction,
         (unsigned long)telemetry->random_value,
-        (long)telemetry->command_value
+        (long)telemetry->command_value,
+        (long)(telemetry->gyro_z_centi_dps / 100),
+        gyro_fraction
     );
 
     return length >= 0 && (size_t)length < message_size;

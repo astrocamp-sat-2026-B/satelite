@@ -13,6 +13,7 @@
 #include "command.h"
 #include "protocol.h"
 #include "telemetry.h"
+#include "6axes.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -189,6 +190,11 @@ int main(void) {
     protocol_receiver_init(&command_receiver);
     command_init(&command_state);
     telemetry_init();
+
+    if (!icm42688_init()) {
+        printf("ICM-42688 initialization failed\n");
+        return 1;
+    }
 
     if (cyw43_arch_init()) {
         printf("Wi-Fi initialization failed\n");

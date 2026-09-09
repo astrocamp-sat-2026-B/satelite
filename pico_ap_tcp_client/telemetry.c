@@ -3,6 +3,7 @@
 #include "pico/rand.h"
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
+#include "6axes.h"
 
 static int read_internal_temperature_centi_c(void) {
     const float conversion_factor = 3.3f / 4095.0f;
@@ -24,4 +25,6 @@ void telemetry_collect(telemetry_data_t *telemetry, int32_t command_value) {
     telemetry->temperature_centi_c = read_internal_temperature_centi_c();
     telemetry->random_value = get_rand_32() % 1000;
     telemetry->command_value = command_value;
+    /* Convert dps to an integer so TCP formatting does not require float printf. */
+    telemetry->gyro_z_centi_dps = (int32_t)(icm42688_gyro_z_dps() * 100.0f);
 }
