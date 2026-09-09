@@ -3,10 +3,10 @@
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 
-// I2C0: GP4 = SDA, GP5 = SCL. Change these to match your wiring.
+// I2C0: GP20 = SDA, GP21 = SCL. Change these to match your wiring.
 #define I2C_PORT       i2c0
-#define I2C_SDA_PIN    4
-#define I2C_SCL_PIN    5
+#define I2C_SDA_PIN    20
+#define I2C_SCL_PIN    21
 #define I2C_BAUDRATE   400000
 // AD0/GND -> 0x68, AD0/VDDIO -> 0x69.
 #define ICM42688_ADDR  0x68
