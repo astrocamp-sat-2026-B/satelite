@@ -13,8 +13,8 @@
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
 
-#define AP_SSID       "PICO2W_DEMO"
-#define AP_PASSWORD   "pico2w-demo"
+#define AP_SSID       "PICOW_DEMO"
+#define AP_PASSWORD   "pico-w-demo"
 #define PC_IP         "192.168.4.2"
 #define TCP_PORT      4242
 #define TELEMETRY_INTERVAL_MS 2000
@@ -215,7 +215,7 @@ int main(void) {
         return 1;
     }
 
-    // Pico 2 WをAPとして起動
+    // Pico WをAPとして起動
     cyw43_arch_enable_ap_mode(
         AP_SSID,
         AP_PASSWORD,
