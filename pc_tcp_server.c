@@ -10,6 +10,7 @@
 
 #define TCP_PORT 4242
 
+// 送信
 static int send_all(SOCKET sock, const char *data, int length) {
     int total = 0;
 
@@ -24,7 +25,7 @@ static int send_all(SOCKET sock, const char *data, int length) {
     return total;
 }
 
-// Picoから届くデータを、キーボード入力とは別のスレッドで表示する。
+// テレメトリ表示
 static void display_pico_line(const char *line) {
     if (strncmp(line, "TELEMETRY,", 10) == 0) {
         printf("\nTelemetry <- Pico: %s\n", line + 10);
@@ -36,7 +37,7 @@ static void display_pico_line(const char *line) {
     fflush(stdout);
 }
 
-// TCPの受信単位に依存せず、改行ごとにPicoからの1メッセージを表示する。
+// 受信
 static DWORD WINAPI receive_from_pico(LPVOID parameter) {
     SOCKET client = *(SOCKET *)parameter;
     char received_data[128];
