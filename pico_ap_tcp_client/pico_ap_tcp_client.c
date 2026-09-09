@@ -26,6 +26,7 @@ static volatile bool tcp_connecting = false;
 static bool telemetry_led_on = false;
 static absolute_time_t telemetry_led_off_time;
 
+// 送信
 static err_t send_text(struct tcp_pcb *pcb, const char *text) {
     err_t err = tcp_write(pcb, text, strlen(text), TCP_WRITE_FLAG_COPY);
     if (err != ERR_OK) {
@@ -35,6 +36,7 @@ static err_t send_text(struct tcp_pcb *pcb, const char *text) {
     return tcp_output(pcb);
 }
 
+// 温度センサ
 static int read_internal_temperature_centi_c(void) {
     const float conversion_factor = 3.3f / 4095.0f;
     uint16_t raw = adc_read();
@@ -44,12 +46,14 @@ static int read_internal_temperature_centi_c(void) {
     return (int)(temperature_c * 100.0f);
 }
 
+// 送信成功LED
 static void flash_telemetry_led(void) {
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, true);
     telemetry_led_on = true;
     telemetry_led_off_time = make_timeout_time_ms(TELEMETRY_LED_ON_MS);
 }
 
+// LED点灯状態更新
 static void update_telemetry_led(void) {
     if (telemetry_led_on &&
         absolute_time_diff_us(get_absolute_time(), telemetry_led_off_time) <= 0) {
@@ -58,6 +62,7 @@ static void update_telemetry_led(void) {
     }
 }
 
+// 疑似テレメトリ作成
 static void send_telemetry(struct tcp_pcb *pcb) {
     char telemetry[128];
     uint32_t uptime_s = (uint32_t)(to_ms_since_boot(get_absolute_time()) / 1000);
@@ -87,6 +92,7 @@ static void send_telemetry(struct tcp_pcb *pcb) {
     }
 }
 
+// 送信応答
 static err_t send_reply(struct tcp_pcb *pcb, const struct pbuf *p) {
     static const char prefix[] = "PICO_REPLY: ";
     char last_char = '\0';
@@ -125,6 +131,7 @@ static void on_tcp_error(void *arg, err_t err) {
     tcp_connecting = false;
 }
 
+// 受け取り
 static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
                         err_t err) {
     (void)arg;
@@ -160,6 +167,7 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
     return ERR_OK;
 }
 
+// 接続完了
 static err_t on_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
     (void)arg;
     tcp_connecting = false;
@@ -178,6 +186,7 @@ static err_t on_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
     return send_text(pcb, "PICO_CONNECTED\n");
 }
 
+// 接続確立
 static void connect_to_pc(void) {
     ip_addr_t pc_address;
 
