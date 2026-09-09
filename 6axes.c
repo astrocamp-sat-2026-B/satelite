@@ -137,7 +137,7 @@ int main(void) {
     sleep_ms(1500);  /* Gives USB serial a moment to enumerate. */
 
     if (!icm42688_init()) {
-        printf("ICM-42688-P was not found (check I2C wiring/address).\\n");
+        printf("ICM-42688-P was not found (check I2C wiring/address).\n");
         while (true) {
             sleep_ms(1000);
         }
@@ -146,12 +146,12 @@ int main(void) {
     while (true) {
         icm42688_data_t sensor;
         if (icm42688_read(&sensor)) {
-            printf("T=%6.2f C  A[g]=%7.3f %7.3f %7.3f  G[dps]=%8.2f %8.2f %8.2f\\n",
+            printf("T=%6.2f C  A[g]=%7.3f %7.3f %7.3f  G[dps]=%8.2f %8.2f %8.2f\n",
                    sensor.temperature_c,
                    sensor.accel_x_g, sensor.accel_y_g, sensor.accel_z_g,
                    sensor.gyro_x_dps, sensor.gyro_y_dps, sensor.gyro_z_dps);
         } else {
-            printf("ICM-42688-P I2C read error\\n");
+            printf("ICM-42688-P I2C read error\n");
         }
         sleep_ms(100);
     }
