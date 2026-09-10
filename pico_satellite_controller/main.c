@@ -14,6 +14,7 @@
 #include "protocol.h"
 #include "telemetry.h"
 #include "icm42688.h"
+#include "servo.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -86,6 +87,8 @@ static void handle_ground_command(const char *line, void *context) {
         printf("command reply formatting failed\n");
         return;
     }
+
+    servo_set_speed(command_get_value(&command_state));
 
     err_t err = send_text(client_pcb, reply);
     if (err != ERR_OK) {
@@ -190,6 +193,7 @@ int main(void) {
     protocol_receiver_init(&command_receiver);
     command_init(&command_state);
     telemetry_init();
+    servo_init();
 
     if (!icm42688_init()) {
         printf("ICM-42688 initialization failed\n");

@@ -41,7 +41,8 @@ add_executable(pico_satellite_controller
         protocol.c
         command.c
         icm42688.c
-        photodiode.c)
+        photodiode.c
+        servo.c)
 
 pico_set_program_name(pico_satellite_controller "pico_satellite_controller")
 pico_set_program_version(pico_satellite_controller "0.1")
@@ -56,6 +57,7 @@ target_link_libraries(pico_satellite_controller
         hardware_adc
         hardware_i2c
         hardware_spi
+        hardware_pwm
         pico_rand
         pico_cyw43_arch_lwip_poll)
 

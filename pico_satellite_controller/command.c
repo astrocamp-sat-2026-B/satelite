@@ -4,6 +4,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool parse_speed(const char *text, int32_t *speed) {
+    char *end;
+    long value = strtol(text, &end, 10);
+
+    if (*text == '\0' || *end != '\0' || value < -100 || value > 100) {
+        return false;
+    }
+
+    *speed = (int32_t)value;
+    return true;
+}
+
 void command_init(command_state_t *state) {
     state->value = 0;
 }
@@ -17,15 +29,21 @@ bool command_handle_line(command_state_t *state, const char *line,
     static const char set_value_prefix[] = "SET_VALUE,";
     int length;
 
-    if (strncmp(line, set_value_prefix, sizeof(set_value_prefix) - 1) == 0) {
-        char *end;
-        long value = strtol(line + sizeof(set_value_prefix) - 1, &end, 10);
+    if (strncmp(line, set_value_prefix, sizeof(set_value_prefix) - 1) == 0 ||
+        *line == '-' || (*line >= '0' && *line <= '9')) {
+        const char *speed_text = line;
+        int32_t speed;
 
-        if (*end == '\0') {
-            state->value = (int32_t)value;
-            length = snprintf(reply, reply_size, "ACK,SET_VALUE,%ld\n", value);
+        if (strncmp(line, set_value_prefix, sizeof(set_value_prefix) - 1) == 0) {
+            speed_text = line + sizeof(set_value_prefix) - 1;
+        }
+
+        if (parse_speed(speed_text, &speed)) {
+            state->value = speed;
+            length = snprintf(reply, reply_size, "ACK,SET_VALUE,%ld\n", (long)speed);
         } else {
-            length = snprintf(reply, reply_size, "ERROR,INVALID_VALUE\n");
+            length = snprintf(reply, reply_size,
+                              "ERROR,INVALID_SPEED,-100_TO_100\n");
         }
     } else if (strcmp(line, "GET_VALUE") == 0) {
         length = snprintf(reply, reply_size, "VALUE,%ld\n", (long)state->value);
