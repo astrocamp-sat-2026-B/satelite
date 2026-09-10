@@ -15,11 +15,22 @@
 #pragma comment(lib, "wlanapi.lib")
 
 #define TCP_PORT 4242
+#define HTTP_PORT 8080
 #define MAX_FRAME_BYTES (1024u * 1024u)
 #define AP_SSID "PICOW_DEMO"
 #define SIGNAL_UPDATE_INTERVAL_MS 5000
 
 static volatile LONG signal_monitor_running = 1;
+static volatile LONG signal_quality_percent = -1;
+static volatile LONG signal_last_update_ms = 0;
+static volatile LONG http_server_running = 1;
+
+static const char SIGNAL_DASHBOARD_HTML[] =
+"<!doctype html><html lang=\"ja\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Pico W AP Signal</title><style>"
+"*{box-sizing:border-box}body{margin:0;background:#09131d;color:#eaf3fa;font-family:system-ui,sans-serif}main{width:min(920px,calc(100% - 28px));margin:36px auto}h1{margin:0;font-size:clamp(1.5rem,4vw,2.2rem)}.sub{color:#9cb0c2;margin:6px 0 24px}.panel{background:#111f2c;border:1px solid #294257;border-radius:14px;padding:20px;box-shadow:0 14px 40px #0005}.status{display:flex;gap:10px;align-items:center;margin-bottom:20px}.dot{width:12px;height:12px;border-radius:50%;background:#77899a}.dot.ok{background:#42d99a;box-shadow:0 0 14px #42d99a}.dot.error{background:#f06778}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.card{background:#0c1823;border:1px solid #263d50;border-radius:10px;padding:15px}.label{color:#94aabd;font-size:.76rem;letter-spacing:.06em;text-transform:uppercase}.value{font-size:1.75rem;font-weight:700;margin-top:7px;font-variant-numeric:tabular-nums}.meter{height:16px;background:#263746;border-radius:999px;overflow:hidden;margin:20px 0 8px}.fill{width:0;height:100%;background:#77899a;transition:width .5s,background .5s}.scale{display:flex;justify-content:space-between;color:#8499aa;font-size:.72rem}.note{color:#9cb0c2;line-height:1.65;margin:20px 0 0}.note b{color:#dceaf5}@media(max-width:520px){main{margin:20px auto}.panel{padding:15px}.value{font-size:1.45rem}}</style></head><body><main>"
+"<h1>Pico W AP signal monitor</h1><p class=\"sub\">Windows WLAN API measurement / updates every 5 seconds</p><section class=\"panel\"><div class=\"status\"><span id=\"dot\" class=\"dot\"></span><strong id=\"status\">Measuring...</strong></div><div class=\"grid\"><article class=\"card\"><div class=\"label\">SSID</div><div id=\"ssid\" class=\"value\">--</div></article><article class=\"card\"><div class=\"label\">Signal quality</div><div id=\"quality\" class=\"value\">-- %</div></article><article class=\"card\"><div class=\"label\">Estimated RSSI</div><div id=\"dbm\" class=\"value\">-- dBm</div></article><article class=\"card\"><div class=\"label\">Assessment</div><div id=\"rating\" class=\"value\">--</div></article></div><div class=\"meter\"><div id=\"fill\" class=\"fill\"></div></div><div class=\"scale\"><span>0% / -100 dBm</span><span>50% / -75 dBm</span><span>100% / -50 dBm</span></div><p id=\"updated\" class=\"note\">Waiting for a sample...</p><p class=\"note\"><b>dBm</b> is an estimate converted from Windows signal quality. A value closer to 0 is stronger. The measurement is the Pico AP signal as received by this Windows PC.</p></section></main><script>"
+"const $=id=>document.getElementById(id);function color(q){return q>=80?'#42d99a':q>=60?'#76cf65':q>=40?'#f2c85b':q>=20?'#ef9454':'#f06778'}async function poll(){try{const d=await(await fetch('/api/signal',{cache:'no-store'})).json();$('ssid').textContent=d.ssid;if(!d.available){$('dot').className='dot error';$('status').textContent='AP signal unavailable';$('quality').textContent='-- %';$('dbm').textContent='-- dBm';$('rating').textContent='--';$('fill').style.width='0';$('updated').textContent='Connect this PC to '+d.ssid+' and wait for the next sample.';return}const c=color(d.quality_percent);$('dot').className='dot ok';$('status').textContent='Receiving AP signal measurements';$('quality').textContent=d.quality_percent+' %';$('dbm').textContent=d.estimated_dbm+' dBm';$('rating').textContent=d.rating;$('rating').style.color=c;$('fill').style.width=d.quality_percent+'%';$('fill').style.background=c;$('updated').textContent='Last measurement: '+d.updated_age_s.toFixed(1)+' seconds ago / sampling interval: '+d.sample_interval_s+' seconds'}catch(e){$('dot').className='dot error';$('status').textContent='Signal API connection error'}}poll();setInterval(poll,1000);"
+"</script></body></html>";
 
 static const char *signal_rating(DWORD quality) {
     if (quality >= 80) return "Excellent";
@@ -72,6 +83,9 @@ static DWORD WINAPI monitor_wifi_signal(LPVOID parameter) {
                     memcmp(ssid->ucSSID, AP_SSID, ssid->uSSIDLength) == 0) {
                     DWORD quality =
                         connection->wlanAssociationAttributes.wlanSignalQuality;
+                    InterlockedExchange(&signal_quality_percent, (LONG)quality);
+                    InterlockedExchange(&signal_last_update_ms,
+                                        (LONG)GetTickCount());
                     printf("\nWi-Fi link: %s, about %d dBm, %lu%% (%s)\n",
                            AP_SSID, quality_to_dbm(quality),
                            (unsigned long)quality, signal_rating(quality));
@@ -86,6 +100,7 @@ static DWORD WINAPI monitor_wifi_signal(LPVOID parameter) {
         }
 
         if (!found) {
+            InterlockedExchange(&signal_quality_percent, -1);
             printf("\nWi-Fi link: %s signal unavailable\n", AP_SSID);
             printf("PC -> Pico > ");
             fflush(stdout);
@@ -100,6 +115,89 @@ static DWORD WINAPI monitor_wifi_signal(LPVOID parameter) {
     }
 
     WlanCloseHandle(wlan, NULL);
+    return 0;
+}
+
+static int send_all(SOCKET sock, const char *data, int length);
+
+static SOCKET create_listener(unsigned short port) {
+    SOCKET server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    struct sockaddr_in address;
+    int reuse = 1;
+
+    if (server == INVALID_SOCKET) return INVALID_SOCKET;
+    setsockopt(server, SOL_SOCKET, SO_REUSEADDR,
+               (const char *)&reuse, sizeof(reuse));
+    memset(&address, 0, sizeof(address));
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_port = htons(port);
+    if (bind(server, (struct sockaddr *)&address, sizeof(address)) ==
+            SOCKET_ERROR ||
+        listen(server, SOMAXCONN) == SOCKET_ERROR) {
+        closesocket(server);
+        return INVALID_SOCKET;
+    }
+    return server;
+}
+
+static void http_reply(SOCKET client, const char *content_type,
+                       const char *body) {
+    char header[256];
+    int header_length = snprintf(
+        header, sizeof(header),
+        "HTTP/1.1 200 OK\r\nContent-Type: %s; charset=utf-8\r\n"
+        "Content-Length: %zu\r\nCache-Control: no-store\r\n"
+        "Connection: close\r\n\r\n",
+        content_type, strlen(body));
+    if (header_length > 0 && header_length < (int)sizeof(header)) {
+        send_all(client, header, header_length);
+        send_all(client, body, (int)strlen(body));
+    }
+}
+
+static DWORD WINAPI serve_signal_dashboard(LPVOID parameter) {
+    SOCKET server = *(SOCKET *)parameter;
+
+    while (InterlockedCompareExchange(&http_server_running, 1, 1)) {
+        SOCKET client = accept(server, NULL, NULL);
+        if (client == INVALID_SOCKET) break;
+
+        char request[1024];
+        int received = recv(client, request, sizeof(request) - 1, 0);
+        if (received > 0) {
+            request[received] = '\0';
+            if (strncmp(request, "GET /api/signal ", 16) == 0) {
+                char json[320];
+                LONG quality = InterlockedCompareExchange(
+                    &signal_quality_percent, 0, 0);
+                DWORD updated = (DWORD)InterlockedCompareExchange(
+                    &signal_last_update_ms, 0, 0);
+                if (quality >= 0) {
+                    DWORD age_ms = GetTickCount() - updated;
+                    snprintf(json, sizeof(json),
+                             "{\"available\":true,\"ssid\":\"%s\","
+                             "\"quality_percent\":%ld,\"estimated_dbm\":%d,"
+                             "\"rating\":\"%s\",\"updated_age_s\":%.1f,"
+                             "\"sample_interval_s\":%.1f}",
+                             AP_SSID, quality, quality_to_dbm((DWORD)quality),
+                             signal_rating((DWORD)quality), age_ms / 1000.0,
+                             SIGNAL_UPDATE_INTERVAL_MS / 1000.0);
+                } else {
+                    snprintf(json, sizeof(json),
+                             "{\"available\":false,\"ssid\":\"%s\","
+                             "\"quality_percent\":null,\"estimated_dbm\":null,"
+                             "\"rating\":null,\"updated_age_s\":null,"
+                             "\"sample_interval_s\":%.1f}",
+                             AP_SSID, SIGNAL_UPDATE_INTERVAL_MS / 1000.0);
+                }
+                http_reply(client, "application/json", json);
+            } else {
+                http_reply(client, "text/html", SIGNAL_DASHBOARD_HTML);
+            }
+        }
+        closesocket(client);
+    }
     return 0;
 }
 
@@ -314,11 +412,13 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
 int main(void) {
     WSADATA wsa;
     SOCKET listener;
+    SOCKET http_listener;
     SOCKET client;
     struct sockaddr_in address;
     char buffer[256];
     HANDLE receive_thread;
     HANDLE signal_thread;
+    HANDLE http_thread;
 
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
         return 1;
@@ -338,17 +438,49 @@ int main(void) {
     }
 
     listen(listener, 1);
+    http_listener = create_listener(HTTP_PORT);
+    if (http_listener == INVALID_SOCKET) {
+        printf("HTTP dashboard bind failed on port %d: %d\n",
+               HTTP_PORT, WSAGetLastError());
+        closesocket(listener);
+        WSACleanup();
+        return 1;
+    }
+    InterlockedExchange(&http_server_running, 1);
+    http_thread = CreateThread(NULL, 0, serve_signal_dashboard,
+                               &http_listener, 0, NULL);
+    InterlockedExchange(&signal_monitor_running, 1);
+    signal_thread = CreateThread(NULL, 0, monitor_wifi_signal, NULL, 0, NULL);
+    if (http_thread == NULL || signal_thread == NULL) {
+        printf("monitor thread creation failed\n");
+        InterlockedExchange(&http_server_running, 0);
+        InterlockedExchange(&signal_monitor_running, 0);
+        closesocket(http_listener);
+        if (http_thread != NULL) CloseHandle(http_thread);
+        if (signal_thread != NULL) CloseHandle(signal_thread);
+        closesocket(listener);
+        WSACleanup();
+        return 1;
+    }
+    printf("Signal dashboard: http://localhost:%d\n", HTTP_PORT);
     printf("Waiting on TCP port %d...\n", TCP_PORT);
 
     client = accept(listener, NULL, NULL);
     if (client == INVALID_SOCKET) {
         printf("accept failed\n");
+        InterlockedExchange(&http_server_running, 0);
+        InterlockedExchange(&signal_monitor_running, 0);
+        closesocket(http_listener);
+        WaitForSingleObject(http_thread, 1000);
+        WaitForSingleObject(signal_thread, 1000);
+        CloseHandle(http_thread);
+        CloseHandle(signal_thread);
+        closesocket(listener);
+        WSACleanup();
         return 1;
     }
 
     printf("Pico connected\n");
-    InterlockedExchange(&signal_monitor_running, 1);
-    signal_thread = CreateThread(NULL, 0, monitor_wifi_signal, NULL, 0, NULL);
     receive_thread = CreateThread(NULL, 0, receive_from_pico, &client, 0, NULL);
     if (receive_thread == NULL) {
         printf("receive thread creation failed\n");
@@ -357,6 +489,10 @@ int main(void) {
             WaitForSingleObject(signal_thread, 1000);
             CloseHandle(signal_thread);
         }
+        InterlockedExchange(&http_server_running, 0);
+        closesocket(http_listener);
+        WaitForSingleObject(http_thread, 1000);
+        CloseHandle(http_thread);
         closesocket(client);
         closesocket(listener);
         WSACleanup();
@@ -392,6 +528,10 @@ int main(void) {
         WaitForSingleObject(signal_thread, 1000);
         CloseHandle(signal_thread);
     }
+    InterlockedExchange(&http_server_running, 0);
+    closesocket(http_listener);
+    WaitForSingleObject(http_thread, 1000);
+    CloseHandle(http_thread);
     CloseHandle(receive_thread);
     closesocket(client);
     closesocket(listener);

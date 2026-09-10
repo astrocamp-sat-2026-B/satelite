@@ -107,6 +107,7 @@ gcc -Wall -Wextra pc_tcp_server.c -o pc_tcp_server.exe -lws2_32 -lwlanapi
 正常に接続されると、次のように表示されます。
 
 ```text
+Signal dashboard: http://localhost:8080
 Waiting on TCP port 4242...
 Pico connected
 Pico -> PC: PICO_CONNECTED
@@ -132,6 +133,29 @@ Wi-Fi link: PICOW_DEMO, about -63 dBm, 74% (Good)
 PicoはAPとして動作するため、Pico SDKの公開RSSI取得API（STA専用）は
 利用できません。この表示は、実際にデータを受け取るWindows側から見た
 `PICOW_DEMO`の電波強度です。テレメトリにも`wifi_mode=AP`を含めます。
+
+### ブラウザで通信強度を確認する
+
+PCサーバーの起動後、ブラウザで `http://localhost:8080` を開きます。
+`viewer`ブランチと同様にWindows側のHTTPサーバーが測定値をJSONで配信し、
+画面が1秒ごとに取得します。SSID、信号品質（%）、推定RSSI（dBm）、
+5段階評価、色付き強度バー、最終測定からの経過時間を確認できます。
+測定自体は5秒間隔です。
+
+外部の画面やプログラムから利用する場合は、
+`GET http://localhost:8080/api/signal` で次のJSONを取得できます。
+
+```json
+{
+  "available": true,
+  "ssid": "PICOW_DEMO",
+  "quality_percent": 74,
+  "estimated_dbm": -63,
+  "rating": "Good",
+  "updated_age_s": 0.4,
+  "sample_interval_s": 5.0
+}
+```
 
 ## コマンド送信
 
