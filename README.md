@@ -48,6 +48,7 @@ Pico W（AP / TCPクライアント: 192.168.4.1）
 | `pc_tcp_server.c` | Windows PCで動くTCPサーバー。キーボード入力をPicoへ送り、コマンド応答とテレメトリを表示する。 |
 | `pico_satellite_controller/main.c` | Pico Wで動く本体コード。AP開始、TCP接続、コマンド応答、テレメトリ送信、LED点滅を行う。 |
 | `pico_satellite_controller/icm42688.c` | ICM-42688のI2C初期化とZ軸角速度取得を行うドライバ。 |
+| `pico_satellite_controller/photoreflector.c` | MCP3008のCH4からLBR-127HLDの生ADC値を読み取る。 |
 | `pico_satellite_controller/camera.c` | OV7675を初期化し、QVGA RGB565画像をPIO/DMAで撮影する。 |
 | `pico_satellite_controller/CMakeLists.txt` | Pico SDK向けビルド設定。Wi-Fi/lwIP、ADC、I2C、乱数、USB Serial Monitorを有効にする。 |
 | `pico_satellite_controller/lwipopts.h` | Picoで使用するlwIP（TCP/IPスタック）の設定。 |
@@ -180,7 +181,7 @@ FRAME,320,240,RGB565,153600,1234abcd\n
 Picoは接続中、2秒ごとに次の形式でテレメトリを送ります。
 
 ```text
-Telemetry <- Pico: uptime_s=12,temp_c=26.45,random=381
+Telemetry <- Pico: uptime_s=12,temp_c=26.45,random=381,command_value=50,gyro_z_dps=1.25,photodiode_adc=123|234|345|456,photoreflector_adc=512
 ```
 
 | 項目 | 内容 |
@@ -188,6 +189,24 @@ Telemetry <- Pico: uptime_s=12,temp_c=26.45,random=381
 | `uptime_s` | Picoが起動してからの累積秒数。再起動時に0へ戻る。 |
 | `temp_c` | RP2040の内蔵温度センサ値。目安として利用する。 |
 | `random` | 0〜999の乱数。通信データが更新されていることを確認するための疑似値。 |
+| `photoreflector_adc` | LBR-127HLDを接続したMCP3008 CH4の生値（0〜1023）。通信・フレーミング異常時は`NA`。 |
+
+### LBR-127HLD / MCP3008の配線
+
+LBR-127HLDの信号はMAIN基板上でMCP3008のCH4（ネット名`REF`）へ接続します。
+Pico WとMCP3008の接続は次のとおりです。
+
+| 信号 | Pico W GPIO | MCP3008 pin |
+| --- | --- | --- |
+| MISO / DOUT | GP16 | pin12 |
+| CS / SHDN | GP17 | pin10 |
+| CLK | GP18 | pin13 |
+| MOSI / DIN | GP19 | pin11 |
+| VDD / VREF | 3.3V | pin16 / pin15 |
+| GND | GND | pin9 / pin14 |
+
+Windows側で`pc_tcp_server.exe`を起動すると、LBR-127HLDの値をほかの
+テレメトリと一緒に2秒ごとに確認できます。
 
 テレメトリを送信するたび、Pico Wの内蔵LEDが約200 ms点灯します。LEDはPico側の送信動作、PC画面の`Telemetry <- Pico:`表示はPC側の受信動作の確認に使えます。
 

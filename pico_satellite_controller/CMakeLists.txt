@@ -42,6 +42,7 @@ add_executable(pico_satellite_controller
         command.c
         icm42688.c
         photodiode.c
+        photoreflector.c
         servo.c
         camera.c)
 
