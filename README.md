@@ -183,6 +183,17 @@ PC -> Pico: hello
 | `GET_VALUE` | 現在のサーボ速度を取得する。 |
 | `CAPTURE` | OV7675で通常画像を1枚撮影し、Windowsへ送る。 |
 | `CAPTURE_TEST` | カラーバーを有効にして1枚撮影し、Windowsへ送る。 |
+| `SET_SUN_THRESHOLD,0`〜`SET_SUN_THRESHOLD,1023` | 太陽自動撮影のしきい値（ADC値）を変更する。デフォルト700。 |
+| `SET_SUN_TOLERANCE,0`〜`SET_SUN_TOLERANCE,1023` | 太陽自動撮影の左右許容誤差（ADC値）を変更する。デフォルト50。 |
+| `GET_SUN_CONFIG` | 現在のしきい値・許容誤差を取得する。 |
+
+### 太陽自動撮影
+
+`photodiode_adc`のCH2/CH3（`sun_capture.h`の`SUN_CAPTURE_CHANNEL_A`/`_B`）
+の差が許容誤差以内、かつ両方がしきい値以上になった瞬間（エッジトリガー）に、
+自動で`CAPTURE`と同じ撮影キューへ積む。条件が成立し続けていても連写はせず、
+一度条件から外れて再度成立したときのみ次の撮影を行う。姿勢（回転中かどうか）
+は判定条件に含めていない。
 
 最初の撮影時にカメラを自動初期化します。Windows側は受信データのCRC32を
 検証し、成功するとサーバーを起動したフォルダーへ次の名前で保存します。

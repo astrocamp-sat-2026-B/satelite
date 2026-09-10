@@ -1,6 +1,7 @@
 // main.c
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "pico/stdlib.h"
@@ -16,6 +17,8 @@
 #include "icm42688.h"
 #include "servo.h"
 #include "camera.h"
+#include "photodiode.h"
+#include "sun_capture.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -139,6 +142,19 @@ static void process_capture_request(void) {
     camera_transfer.active = true;
 }
 
+/* 太陽センサーの2chが揃ってしきい値を超えたら自動でCAPTUREをキューイングする。
+   撮影中/転送中や手動撮影待ちのときは奪わず、次の周期に譲る。 */
+static void process_sun_capture(void) {
+    uint16_t photodiode_adc[PHOTODIODE_CHANNEL_COUNT];
+    photodiode_read_all(photodiode_adc);
+
+    bool triggered = sun_capture_update(photodiode_adc);
+    if (triggered && capture_request == 0 && !camera_transfer.active) {
+        capture_request = 1;
+        printf("Sun aligned: auto capture queued\n");
+    }
+}
+
 // 温度センサ
 // 送信成功LED
 static void flash_telemetry_led(void) {
@@ -188,6 +204,47 @@ static void handle_ground_command(const char *line, void *context) {
             capture_request = strcmp(line, "CAPTURE_TEST") == 0 ? 2 : 1;
             send_text(client_pcb, "ACK,CAPTURE\n");
         }
+        return;
+    }
+
+    static const char set_threshold_prefix[] = "SET_SUN_THRESHOLD,";
+    static const char set_tolerance_prefix[] = "SET_SUN_TOLERANCE,";
+
+    if (strncmp(line, set_threshold_prefix, sizeof(set_threshold_prefix) - 1) == 0 ||
+        strncmp(line, set_tolerance_prefix, sizeof(set_tolerance_prefix) - 1) == 0) {
+        bool is_threshold =
+            strncmp(line, set_threshold_prefix, sizeof(set_threshold_prefix) - 1) == 0;
+        const char *value_text =
+            line + (is_threshold ? sizeof(set_threshold_prefix) - 1
+                                  : sizeof(set_tolerance_prefix) - 1);
+        char *end;
+        long value = strtol(value_text, &end, 10);
+
+        if (*value_text == '\0' || *end != '\0' || value < 0 ||
+            value > SUN_CAPTURE_ADC_MAX) {
+            char error[64];
+            snprintf(error, sizeof(error), "ERROR,INVALID_VALUE,0_TO_%u\n",
+                     SUN_CAPTURE_ADC_MAX);
+            send_text(client_pcb, error);
+        } else {
+            char ack[64];
+            if (is_threshold) {
+                sun_capture_set_threshold((uint16_t)value);
+                snprintf(ack, sizeof(ack), "ACK,SET_SUN_THRESHOLD,%ld\n", value);
+            } else {
+                sun_capture_set_tolerance((uint16_t)value);
+                snprintf(ack, sizeof(ack), "ACK,SET_SUN_TOLERANCE,%ld\n", value);
+            }
+            send_text(client_pcb, ack);
+        }
+        return;
+    }
+
+    if (strcmp(line, "GET_SUN_CONFIG") == 0) {
+        char status[80];
+        snprintf(status, sizeof(status), "SUN_CONFIG,THRESHOLD,%u,TOLERANCE,%u\n",
+                 sun_capture_get_threshold(), sun_capture_get_tolerance());
+        send_text(client_pcb, status);
         return;
     }
 
@@ -305,6 +362,7 @@ int main(void) {
     protocol_receiver_init(&command_receiver);
     command_init(&command_state);
     telemetry_init();
+    sun_capture_init();
     servo_init();
 
     if (!icm42688_init()) {
@@ -335,6 +393,7 @@ int main(void) {
         // poll方式のWi-Fi/lwIP処理を進める。
         cyw43_arch_poll();
 
+        process_sun_capture();
         process_capture_request();
 
         // PCサーバが起動していなければ、1秒ごとに接続を再試行
