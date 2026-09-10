@@ -74,7 +74,7 @@ Pico W（AP / TCPクライアント: 192.168.4.1）
 プロジェクト直下で、MinGW gccを使ってビルドします。
 
 ```powershell
-gcc -Wall -Wextra pc_tcp_server.c -o pc_tcp_server.exe -lws2_32
+gcc -Wall -Wextra pc_tcp_server.c -o pc_tcp_server.exe -lws2_32 -lwlanapi
 ```
 
 ## 実行手順
@@ -112,6 +112,26 @@ Pico connected
 Pico -> PC: PICO_CONNECTED
 PC -> Pico >
 ```
+
+接続中は5秒ごとに、Windowsが測定したAPの受信信号品質も表示します。
+
+```text
+Wi-Fi link: PICOW_DEMO, about -63 dBm, 74% (Good)
+```
+
+| 表示 | 意味 |
+| --- | --- |
+| `dBm` | 0に近いほど強い。Windowsの品質値から換算した概算値。 |
+| `%` | Windows WLAN APIが返す信号品質（0〜100%）。 |
+| `Excellent` | 80%以上。非常に良好。 |
+| `Good` | 60〜79%。良好。 |
+| `Fair` | 40〜59%。通常利用可能。 |
+| `Weak` | 20〜39%。切断や速度低下に注意。 |
+| `Very weak` | 0〜19%。非常に弱い。 |
+
+PicoはAPとして動作するため、Pico SDKの公開RSSI取得API（STA専用）は
+利用できません。この表示は、実際にデータを受け取るWindows側から見た
+`PICOW_DEMO`の電波強度です。テレメトリにも`wifi_mode=AP`を含めます。
 
 ## コマンド送信
 
@@ -181,7 +201,7 @@ FRAME,320,240,RGB565,153600,1234abcd\n
 Picoは接続中、2秒ごとに次の形式でテレメトリを送ります。
 
 ```text
-Telemetry <- Pico: uptime_s=12,temp_c=26.45,random=381,command_value=50,gyro_z_dps=1.25,photodiode_adc=123|234|345|456,photoreflector_adc=512
+Telemetry <- Pico: wifi_mode=AP,uptime_s=12,temp_c=26.45,random=381,command_value=50,gyro_z_dps=1.25,photodiode_adc=123|234|345|456,photoreflector_adc=512
 ```
 
 | 項目 | 内容 |

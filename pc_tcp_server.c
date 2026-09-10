@@ -3,16 +3,105 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <wlanapi.h>
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "wlanapi.lib")
 
 #define TCP_PORT 4242
 #define MAX_FRAME_BYTES (1024u * 1024u)
+#define AP_SSID "PICOW_DEMO"
+#define SIGNAL_UPDATE_INTERVAL_MS 5000
+
+static volatile LONG signal_monitor_running = 1;
+
+static const char *signal_rating(DWORD quality) {
+    if (quality >= 80) return "Excellent";
+    if (quality >= 60) return "Good";
+    if (quality >= 40) return "Fair";
+    if (quality >= 20) return "Weak";
+    return "Very weak";
+}
+
+/* Windows reports Wi-Fi signal quality as 0..100. Microsoft documents a
+ * linear mapping between -100 dBm and -50 dBm for intermediate values. */
+static int quality_to_dbm(DWORD quality) {
+    if (quality > 100) quality = 100;
+    return (int)(quality / 2) - 100;
+}
+
+static DWORD WINAPI monitor_wifi_signal(LPVOID parameter) {
+    (void)parameter;
+    DWORD negotiated_version;
+    HANDLE wlan = NULL;
+
+    if (WlanOpenHandle(2, NULL, &negotiated_version, &wlan) != ERROR_SUCCESS) {
+        printf("\nWi-Fi signal monitor unavailable\n");
+        return 0;
+    }
+
+    while (InterlockedCompareExchange(&signal_monitor_running, 1, 1)) {
+        PWLAN_INTERFACE_INFO_LIST interfaces = NULL;
+        bool found = false;
+
+        if (WlanEnumInterfaces(wlan, NULL, &interfaces) == ERROR_SUCCESS) {
+            for (DWORD i = 0; i < interfaces->dwNumberOfItems; ++i) {
+                WLAN_INTERFACE_INFO *interface_info = &interfaces->InterfaceInfo[i];
+                if (interface_info->isState != wlan_interface_state_connected) {
+                    continue;
+                }
+
+                DWORD data_size = 0;
+                WLAN_OPCODE_VALUE_TYPE opcode_type;
+                PWLAN_CONNECTION_ATTRIBUTES connection = NULL;
+                if (WlanQueryInterface(
+                        wlan, &interface_info->InterfaceGuid,
+                        wlan_intf_opcode_current_connection, NULL, &data_size,
+                        (PVOID *)&connection, &opcode_type) != ERROR_SUCCESS) {
+                    continue;
+                }
+
+                DOT11_SSID *ssid = &connection->wlanAssociationAttributes.dot11Ssid;
+                if (ssid->uSSIDLength == strlen(AP_SSID) &&
+                    memcmp(ssid->ucSSID, AP_SSID, ssid->uSSIDLength) == 0) {
+                    DWORD quality =
+                        connection->wlanAssociationAttributes.wlanSignalQuality;
+                    printf("\nWi-Fi link: %s, about %d dBm, %lu%% (%s)\n",
+                           AP_SSID, quality_to_dbm(quality),
+                           (unsigned long)quality, signal_rating(quality));
+                    printf("PC -> Pico > ");
+                    fflush(stdout);
+                    found = true;
+                }
+                WlanFreeMemory(connection);
+                if (found) break;
+            }
+            WlanFreeMemory(interfaces);
+        }
+
+        if (!found) {
+            printf("\nWi-Fi link: %s signal unavailable\n", AP_SSID);
+            printf("PC -> Pico > ");
+            fflush(stdout);
+        }
+
+        for (int elapsed = 0;
+             elapsed < SIGNAL_UPDATE_INTERVAL_MS &&
+             InterlockedCompareExchange(&signal_monitor_running, 1, 1);
+             elapsed += 100) {
+            Sleep(100);
+        }
+    }
+
+    WlanCloseHandle(wlan, NULL);
+    return 0;
+}
 
 static uint32_t crc32(const uint8_t *data, size_t size) {
     uint32_t crc = 0xffffffffu;
@@ -229,6 +318,7 @@ int main(void) {
     struct sockaddr_in address;
     char buffer[256];
     HANDLE receive_thread;
+    HANDLE signal_thread;
 
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
         return 1;
@@ -257,9 +347,16 @@ int main(void) {
     }
 
     printf("Pico connected\n");
+    InterlockedExchange(&signal_monitor_running, 1);
+    signal_thread = CreateThread(NULL, 0, monitor_wifi_signal, NULL, 0, NULL);
     receive_thread = CreateThread(NULL, 0, receive_from_pico, &client, 0, NULL);
     if (receive_thread == NULL) {
         printf("receive thread creation failed\n");
+        InterlockedExchange(&signal_monitor_running, 0);
+        if (signal_thread != NULL) {
+            WaitForSingleObject(signal_thread, 1000);
+            CloseHandle(signal_thread);
+        }
         closesocket(client);
         closesocket(listener);
         WSACleanup();
@@ -290,6 +387,11 @@ int main(void) {
 
     shutdown(client, SD_BOTH);
     WaitForSingleObject(receive_thread, INFINITE);
+    InterlockedExchange(&signal_monitor_running, 0);
+    if (signal_thread != NULL) {
+        WaitForSingleObject(signal_thread, 1000);
+        CloseHandle(signal_thread);
+    }
     CloseHandle(receive_thread);
     closesocket(client);
     closesocket(listener);

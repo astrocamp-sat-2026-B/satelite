@@ -57,7 +57,7 @@ bool protocol_encode_telemetry(const telemetry_data_t *telemetry, char *message,
     length = snprintf(
         message,
         message_size,
-        "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=%s,photodiode_adc=%u|%u|%u|%u,photoreflector_adc=%s\n",
+        "TELEMETRY,wifi_mode=AP,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=%s,photodiode_adc=%u|%u|%u|%u,photoreflector_adc=%s\n",
         (unsigned long)telemetry->uptime_s,
         telemetry->temperature_centi_c / 100,
         fraction,
