@@ -24,13 +24,16 @@ static volatile LONG signal_monitor_running = 1;
 static volatile LONG signal_quality_percent = -1;
 static volatile LONG signal_last_update_ms = 0;
 static volatile LONG http_server_running = 1;
+static SRWLOCK latest_camera_lock = SRWLOCK_INIT;
+static uint8_t *latest_camera_bmp = NULL;
+static size_t latest_camera_bmp_size = 0;
 
 static const char SIGNAL_DASHBOARD_HTML[] =
 "<!doctype html><html lang=\"ja\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Pico W AP Signal</title><style>"
-"*{box-sizing:border-box}body{margin:0;background:#09131d;color:#eaf3fa;font-family:system-ui,sans-serif}main{width:min(920px,calc(100% - 28px));margin:36px auto}h1{margin:0;font-size:clamp(1.5rem,4vw,2.2rem)}.sub{color:#9cb0c2;margin:6px 0 24px}.panel{background:#111f2c;border:1px solid #294257;border-radius:14px;padding:20px;box-shadow:0 14px 40px #0005}.status{display:flex;gap:10px;align-items:center;margin-bottom:20px}.dot{width:12px;height:12px;border-radius:50%;background:#77899a}.dot.ok{background:#42d99a;box-shadow:0 0 14px #42d99a}.dot.error{background:#f06778}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.card{background:#0c1823;border:1px solid #263d50;border-radius:10px;padding:15px}.label{color:#94aabd;font-size:.76rem;letter-spacing:.06em;text-transform:uppercase}.value{font-size:1.75rem;font-weight:700;margin-top:7px;font-variant-numeric:tabular-nums}.meter{height:16px;background:#263746;border-radius:999px;overflow:hidden;margin:20px 0 8px}.fill{width:0;height:100%;background:#77899a;transition:width .5s,background .5s}.scale{display:flex;justify-content:space-between;color:#8499aa;font-size:.72rem}.note{color:#9cb0c2;line-height:1.65;margin:20px 0 0}.note b{color:#dceaf5}@media(max-width:520px){main{margin:20px auto}.panel{padding:15px}.value{font-size:1.45rem}}</style></head><body><main>"
-"<h1>Pico W AP signal monitor</h1><p class=\"sub\">Windows WLAN API measurement / updates every 5 seconds</p><section class=\"panel\"><div class=\"status\"><span id=\"dot\" class=\"dot\"></span><strong id=\"status\">Measuring...</strong></div><div class=\"grid\"><article class=\"card\"><div class=\"label\">SSID</div><div id=\"ssid\" class=\"value\">--</div></article><article class=\"card\"><div class=\"label\">Signal quality</div><div id=\"quality\" class=\"value\">-- %</div></article><article class=\"card\"><div class=\"label\">Estimated RSSI</div><div id=\"dbm\" class=\"value\">-- dBm</div></article><article class=\"card\"><div class=\"label\">Assessment</div><div id=\"rating\" class=\"value\">--</div></article></div><div class=\"meter\"><div id=\"fill\" class=\"fill\"></div></div><div class=\"scale\"><span>0% / -100 dBm</span><span>50% / -75 dBm</span><span>100% / -50 dBm</span></div><p id=\"updated\" class=\"note\">Waiting for a sample...</p><p class=\"note\"><b>dBm</b> is an estimate converted from Windows signal quality. A value closer to 0 is stronger. The measurement is the Pico AP signal as received by this Windows PC.</p></section></main><script>"
+"*{box-sizing:border-box}body{margin:0;background:#09131d;color:#eaf3fa;font-family:system-ui,sans-serif}main{width:min(920px,calc(100% - 28px));margin:36px auto}h1{margin:0;font-size:clamp(1.5rem,4vw,2.2rem)}.sub{color:#9cb0c2;margin:6px 0 24px}.panel{background:#111f2c;border:1px solid #294257;border-radius:14px;padding:20px;box-shadow:0 14px 40px #0005}.status{display:flex;gap:10px;align-items:center;margin-bottom:20px}.dot{width:12px;height:12px;border-radius:50%;background:#77899a}.dot.ok{background:#42d99a;box-shadow:0 0 14px #42d99a}.dot.error{background:#f06778}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.card{background:#0c1823;border:1px solid #263d50;border-radius:10px;padding:15px}.label{color:#94aabd;font-size:.76rem;letter-spacing:.06em;text-transform:uppercase}.value{font-size:1.75rem;font-weight:700;margin-top:7px;font-variant-numeric:tabular-nums}.camera{display:block;width:100%;aspect-ratio:4/3;object-fit:contain;background:#050a0f;border:1px solid #263d50;border-radius:10px;margin-top:20px;image-rendering:auto}.meter{height:16px;background:#263746;border-radius:999px;overflow:hidden;margin:20px 0 8px}.fill{width:0;height:100%;background:#77899a;transition:width .5s,background .5s}.scale{display:flex;justify-content:space-between;color:#8499aa;font-size:.72rem}.note{color:#9cb0c2;line-height:1.65;margin:20px 0 0}.note b{color:#dceaf5}@media(max-width:520px){main{margin:20px auto}.panel{padding:15px}.value{font-size:1.45rem}}</style></head><body><main>"
+"<h1>Pico W camera and AP monitor</h1><p class=\"sub\">Live camera / Windows WLAN API measurement</p><section class=\"panel\"><div class=\"status\"><span id=\"dot\" class=\"dot\"></span><strong id=\"status\">Measuring...</strong></div><div class=\"grid\"><article class=\"card\"><div class=\"label\">SSID</div><div id=\"ssid\" class=\"value\">--</div></article><article class=\"card\"><div class=\"label\">Signal quality</div><div id=\"quality\" class=\"value\">-- %</div></article><article class=\"card\"><div class=\"label\">Estimated RSSI</div><div id=\"dbm\" class=\"value\">-- dBm</div></article><article class=\"card\"><div class=\"label\">Assessment</div><div id=\"rating\" class=\"value\">--</div></article></div><img id=\"camera\" class=\"camera\" alt=\"Waiting for camera stream\"><div class=\"meter\"><div id=\"fill\" class=\"fill\"></div></div><div class=\"scale\"><span>0% / -100 dBm</span><span>50% / -75 dBm</span><span>100% / -50 dBm</span></div><p id=\"updated\" class=\"note\">Waiting for a sample...</p><p class=\"note\"><b>dBm</b> is an estimate converted from Windows signal quality. A value closer to 0 is stronger. The measurement is the Pico AP signal as received by this Windows PC.</p></section></main><script>"
 "const $=id=>document.getElementById(id);function color(q){return q>=80?'#42d99a':q>=60?'#76cf65':q>=40?'#f2c85b':q>=20?'#ef9454':'#f06778'}async function poll(){try{const d=await(await fetch('/api/signal',{cache:'no-store'})).json();$('ssid').textContent=d.ssid;if(!d.available){$('dot').className='dot error';$('status').textContent='AP signal unavailable';$('quality').textContent='-- %';$('dbm').textContent='-- dBm';$('rating').textContent='--';$('fill').style.width='0';$('updated').textContent='Connect this PC to '+d.ssid+' and wait for the next sample.';return}const c=color(d.quality_percent);$('dot').className='dot ok';$('status').textContent='Receiving AP signal measurements';$('quality').textContent=d.quality_percent+' %';$('dbm').textContent=d.estimated_dbm+' dBm';$('rating').textContent=d.rating;$('rating').style.color=c;$('fill').style.width=d.quality_percent+'%';$('fill').style.background=c;$('updated').textContent='Last measurement: '+d.updated_age_s.toFixed(1)+' seconds ago / sampling interval: '+d.sample_interval_s+' seconds'}catch(e){$('dot').className='dot error';$('status').textContent='Signal API connection error'}}poll();setInterval(poll,1000);"
-"</script></body></html>";
+"const camera=$('camera');function refreshCamera(){const next=new Image();next.onload=()=>{camera.src=next.src};next.src='/camera.bmp?t='+Date.now()}refreshCamera();setInterval(refreshCamera,500);</script></body></html>";
 
 static const char *signal_rating(DWORD quality) {
     if (quality >= 80) return "Excellent";
@@ -156,6 +159,21 @@ static void http_reply(SOCKET client, const char *content_type,
     }
 }
 
+static void http_reply_bytes(SOCKET client, const char *content_type,
+                             const uint8_t *body, size_t body_size) {
+    char header[256];
+    int header_length = snprintf(
+        header, sizeof(header),
+        "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n"
+        "Content-Length: %zu\r\nCache-Control: no-store\r\n"
+        "Connection: close\r\n\r\n",
+        content_type, body_size);
+    if (header_length > 0 && header_length < (int)sizeof(header)) {
+        send_all(client, header, header_length);
+        send_all(client, (const char *)body, (int)body_size);
+    }
+}
+
 static DWORD WINAPI serve_signal_dashboard(LPVOID parameter) {
     SOCKET server = *(SOCKET *)parameter;
 
@@ -192,6 +210,25 @@ static DWORD WINAPI serve_signal_dashboard(LPVOID parameter) {
                              AP_SSID, SIGNAL_UPDATE_INTERVAL_MS / 1000.0);
                 }
                 http_reply(client, "application/json", json);
+            } else if (strncmp(request, "GET /camera.bmp", 15) == 0) {
+                uint8_t *snapshot = NULL;
+                size_t snapshot_size = 0;
+                AcquireSRWLockShared(&latest_camera_lock);
+                if (latest_camera_bmp != NULL) {
+                    snapshot_size = latest_camera_bmp_size;
+                    snapshot = (uint8_t *)malloc(snapshot_size);
+                    if (snapshot != NULL) {
+                        memcpy(snapshot, latest_camera_bmp, snapshot_size);
+                    }
+                }
+                ReleaseSRWLockShared(&latest_camera_lock);
+                if (snapshot != NULL) {
+                    http_reply_bytes(client, "image/bmp", snapshot,
+                                     snapshot_size);
+                    free(snapshot);
+                } else {
+                    http_reply(client, "text/plain", "No camera frame yet\n");
+                }
             } else {
                 http_reply(client, "text/html", SIGNAL_DASHBOARD_HTML);
             }
@@ -225,24 +262,29 @@ static void put_le32(uint8_t *destination, uint32_t value) {
 }
 
 static int save_rgb565_bmp(const uint8_t *frame, unsigned width,
-                           unsigned height, char *filename,
+                           unsigned height, bool stream_frame, char *filename,
                            size_t filename_size) {
-    SYSTEMTIME now;
-    GetLocalTime(&now);
-    snprintf(filename, filename_size,
-             "camera_%04u%02u%02u_%02u%02u%02u_%03u.bmp",
-             now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
-             now.wSecond, now.wMilliseconds);
-
-    FILE *file = fopen(filename, "wb");
-    if (file == NULL) return 0;
+    if (stream_frame) {
+        snprintf(filename, filename_size, "camera_live.bmp");
+    } else {
+        SYSTEMTIME now;
+        GetLocalTime(&now);
+        snprintf(filename, filename_size,
+                 "camera_%04u%02u%02u_%02u%02u%02u_%03u.bmp",
+                 now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
+                 now.wSecond, now.wMilliseconds);
+    }
 
     uint32_t row_size = (width * 3u + 3u) & ~3u;
     uint32_t pixel_bytes = row_size * height;
-    uint8_t header[54] = {0};
+    size_t bmp_size = 54u + pixel_bytes;
+    uint8_t *bmp = (uint8_t *)calloc(1, bmp_size);
+    if (bmp == NULL) return 0;
+
+    uint8_t *header = bmp;
     header[0] = 'B';
     header[1] = 'M';
-    put_le32(header + 2, 54u + pixel_bytes);
+    put_le32(header + 2, (uint32_t)bmp_size);
     put_le32(header + 10, 54u);
     put_le32(header + 14, 40u);
     put_le32(header + 18, width);
@@ -250,36 +292,38 @@ static int save_rgb565_bmp(const uint8_t *frame, unsigned width,
     put_le16(header + 26, 1u);
     put_le16(header + 28, 24u);
     put_le32(header + 34, pixel_bytes);
-    if (fwrite(header, 1, sizeof(header), file) != sizeof(header)) {
-        fclose(file);
-        return 0;
-    }
-
-    const uint8_t padding[3] = {0};
     for (unsigned output_y = 0; output_y < height; ++output_y) {
         unsigned source_y = height - 1u - output_y;
         for (unsigned x = 0; x < width; ++x) {
             size_t position = ((size_t)source_y * width + x) * 2u;
             uint16_t pixel = ((uint16_t)frame[position] << 8) |
                              frame[position + 1];
-            uint8_t bgr[3] = {
-                (uint8_t)(((pixel & 0x1fu) * 255u) / 31u),
-                (uint8_t)((((pixel >> 5) & 0x3fu) * 255u) / 63u),
-                (uint8_t)((((pixel >> 11) & 0x1fu) * 255u) / 31u),
-            };
-            if (fwrite(bgr, 1, sizeof(bgr), file) != sizeof(bgr)) {
-                fclose(file);
-                return 0;
-            }
-        }
-        size_t padding_size = row_size - width * 3u;
-        if (padding_size > 0 &&
-            fwrite(padding, 1, padding_size, file) != padding_size) {
-            fclose(file);
-            return 0;
+            uint8_t *bgr = bmp + 54u + (size_t)output_y * row_size + x * 3u;
+            bgr[0] = (uint8_t)(((pixel & 0x1fu) * 255u) / 31u);
+            bgr[1] = (uint8_t)((((pixel >> 5) & 0x3fu) * 255u) / 63u);
+            bgr[2] = (uint8_t)((((pixel >> 11) & 0x1fu) * 255u) / 31u);
         }
     }
-    return fclose(file) == 0;
+
+    FILE *file = fopen(filename, "wb");
+    int saved = 0;
+    if (file != NULL) {
+        size_t written = fwrite(bmp, 1, bmp_size, file);
+        int close_result = fclose(file);
+        saved = written == bmp_size && close_result == 0;
+    }
+    if (!saved) {
+        free(bmp);
+        return 0;
+    }
+
+    AcquireSRWLockExclusive(&latest_camera_lock);
+    uint8_t *old_bmp = latest_camera_bmp;
+    latest_camera_bmp = bmp;
+    latest_camera_bmp_size = bmp_size;
+    ReleaseSRWLockExclusive(&latest_camera_lock);
+    free(old_bmp);
+    return 1;
 }
 
 // 送信
@@ -320,6 +364,7 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
     size_t frame_received = 0;
     unsigned frame_width = 0;
     unsigned frame_height = 0;
+    bool frame_is_stream = false;
     uint32_t expected_crc = 0;
 
     for (;;) {
@@ -348,8 +393,13 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
                     } else {
                         char filename[MAX_PATH];
                         if (save_rgb565_bmp(frame, frame_width, frame_height,
-                                            filename, sizeof(filename))) {
-                            printf("\nImage saved: %s\n", filename);
+                                            frame_is_stream, filename,
+                                            sizeof(filename))) {
+                            if (frame_is_stream) {
+                                printf("\nLive frame updated\n");
+                            } else {
+                                printf("\nImage saved: %s\n", filename);
+                            }
                         } else {
                             printf("\nCould not save image\n");
                         }
@@ -375,8 +425,16 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
                 unsigned width, height, size;
                 unsigned long received_crc;
                 char format[16];
-                if (sscanf(line, "FRAME,%u,%u,%15[^,],%u,%lx",
-                           &width, &height, format, &size, &received_crc) == 5) {
+                int fields = sscanf(line,
+                    "FRAME_STREAM,%u,%u,%15[^,],%u,%lx",
+                    &width, &height, format, &size, &received_crc);
+                bool stream_header = fields == 5;
+                if (!stream_header) {
+                    fields = sscanf(line, "FRAME,%u,%u,%15[^,],%u,%lx",
+                                    &width, &height, format, &size,
+                                    &received_crc);
+                }
+                if (fields == 5) {
                     if (strcmp(format, "RGB565") != 0 || width != 320u ||
                         height != 240u || size != width * height * 2u ||
                         size > MAX_FRAME_BYTES) {
@@ -388,6 +446,7 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
                         } else {
                             frame_width = width;
                             frame_height = height;
+                            frame_is_stream = stream_header;
                             frame_size = size;
                             frame_received = 0;
                             expected_crc = (uint32_t)received_crc;
@@ -500,7 +559,7 @@ int main(void) {
     }
 
     printf("Commands: -100..100=set servo speed, CAPTURE=take photo, "
-           "CAPTURE_TEST=colour bars, /quit=exit.\n");
+           "STREAM_START[,ms]/STREAM_STOP=control video, /quit=exit.\n");
 
     for (;;) {
         printf("PC -> Pico > ");
@@ -535,6 +594,11 @@ int main(void) {
     CloseHandle(receive_thread);
     closesocket(client);
     closesocket(listener);
+    AcquireSRWLockExclusive(&latest_camera_lock);
+    free(latest_camera_bmp);
+    latest_camera_bmp = NULL;
+    latest_camera_bmp_size = 0;
+    ReleaseSRWLockExclusive(&latest_camera_lock);
     WSACleanup();
     return 0;
 }
