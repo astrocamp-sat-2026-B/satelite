@@ -21,7 +21,7 @@
 #define AP_PASSWORD   "pico-w-demo"
 #define PC_IP         "192.168.4.2"
 #define TCP_PORT      4242
-#define TELEMETRY_INTERVAL_MS 2000
+#define TELEMETRY_INTERVAL_MS 500
 #define TELEMETRY_LED_ON_MS    200
 
 static struct tcp_pcb *client_pcb = NULL;
@@ -344,7 +344,7 @@ int main(void) {
             cyw43_arch_lwip_end();
         }
 
-        // Pico -> PC: 2秒ごとに送信
+        // Pico -> PC: 0.5秒ごとに送信
         if (tcp_connected && !camera_transfer.active &&
             absolute_time_diff_us(get_absolute_time(), next_telemetry) <= 0) {
             cyw43_arch_lwip_begin();
