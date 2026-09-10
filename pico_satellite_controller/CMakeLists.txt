@@ -42,7 +42,11 @@ add_executable(pico_satellite_controller
         command.c
         icm42688.c
         photodiode.c
-        servo.c)
+        servo.c
+        camera.c)
+
+pico_generate_pio_header(pico_satellite_controller
+        ${CMAKE_CURRENT_LIST_DIR}/camera_capture.pio)
 
 pico_set_program_name(pico_satellite_controller "pico_satellite_controller")
 pico_set_program_version(pico_satellite_controller "0.1")
@@ -58,6 +62,8 @@ target_link_libraries(pico_satellite_controller
         hardware_i2c
         hardware_spi
         hardware_pwm
+        hardware_pio
+        hardware_dma
         pico_rand
         pico_cyw43_arch_lwip_poll)
 

@@ -3,6 +3,7 @@
 Pico WをWi-Fiアクセスポイント（AP）として動かし、接続したWindows PCとTCPで双方向通信する最小構成です。
 
 - PCから任意のコマンド文字列を送信できる
+- PCから任意のタイミングでOV7675を撮影し、画像をBMPとして保存できる
 - Picoは受信した文字列を`PICO_REPLY:`付きで返信する
 - Picoは2秒ごとに疑似テレメトリをPCへ送信する
 - テレメトリ送信時にPico Wの内蔵LEDが約200 ms点灯する
@@ -47,6 +48,7 @@ Pico W（AP / TCPクライアント: 192.168.4.1）
 | `pc_tcp_server.c` | Windows PCで動くTCPサーバー。キーボード入力をPicoへ送り、コマンド応答とテレメトリを表示する。 |
 | `pico_satellite_controller/main.c` | Pico Wで動く本体コード。AP開始、TCP接続、コマンド応答、テレメトリ送信、LED点滅を行う。 |
 | `pico_satellite_controller/icm42688.c` | ICM-42688のI2C初期化とZ軸角速度取得を行うドライバ。 |
+| `pico_satellite_controller/camera.c` | OV7675を初期化し、QVGA RGB565画像をPIO/DMAで撮影する。 |
 | `pico_satellite_controller/CMakeLists.txt` | Pico SDK向けビルド設定。Wi-Fi/lwIP、ADC、I2C、乱数、USB Serial Monitorを有効にする。 |
 | `pico_satellite_controller/lwipopts.h` | Picoで使用するlwIP（TCP/IPスタック）の設定。 |
 | `pico_satellite_controller/pico_sdk_import.cmake` | インストール済みのPico SDKをCMakeから読み込むためのファイル。 |
@@ -126,6 +128,52 @@ PC -> Pico: hello
 ```
 
 終了する場合は、PC側で`/quit`を入力します。
+
+### サーボとカメラのコマンド
+
+| 入力 | 動作 |
+| --- | --- |
+| `-100` ～ `100` | 連続回転サーボの速度を指定する（負数は逆転、0は停止）。 |
+| `SET_VALUE,-100` ～ `SET_VALUE,100` | 上記と同じ。 |
+| `GET_VALUE` | 現在のサーボ速度を取得する。 |
+| `CAPTURE` | OV7675で通常画像を1枚撮影し、Windowsへ送る。 |
+| `CAPTURE_TEST` | カラーバーを有効にして1枚撮影し、Windowsへ送る。 |
+
+最初の撮影時にカメラを自動初期化します。Windows側は受信データのCRC32を
+検証し、成功するとサーバーを起動したフォルダーへ次の名前で保存します。
+
+```text
+camera_YYYYMMDD_HHMMSS_mmm.bmp
+```
+
+転送中はテレメトリ送信を一時停止し、画像バイナリとテキストメッセージが
+混ざらないようにします。撮影中または転送中に再度撮影を要求すると
+`ERROR,CAMERA_BUSY`が返ります。
+
+### OV7675の配線
+
+| OV7675 | Pico W |
+| --- | --- |
+| D0～D7 | GP0～GP7 |
+| SDA / SCL | GP14 / GP15（I2C1） |
+| PCLK | GP22 |
+| HREF / VSYNC | GP26 / GP27 |
+| XCLK | GP28 |
+| VCC / GND | 3.3V / GND |
+
+カメラはPIO0のステートマシン1個とDMAチャンネル1個を使用します。
+
+### 画像転送プロトコル
+
+Picoは撮影後、改行で終わるヘッダーとRGB565バイナリを連続送信します。
+
+```text
+FRAME,320,240,RGB565,153600,1234abcd\n
+<153600 bytes RGB565>
+```
+
+末尾の値は8桁16進のCRC32です。TCPの受信境界には依存せず、Windows側は
+ヘッダーのサイズに従って画像データを復元します。
 
 ## テレメトリ受信とLED
 

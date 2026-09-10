@@ -15,6 +15,7 @@
 #include "telemetry.h"
 #include "icm42688.h"
 #include "servo.h"
+#include "camera.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -30,6 +31,26 @@ static bool telemetry_led_on = false;
 static absolute_time_t telemetry_led_off_time;
 static protocol_receiver_t command_receiver;
 static command_state_t command_state;
+static bool camera_initialized = false;
+static volatile int capture_request = 0; /* 1=photo, 2=colour bars */
+static struct {
+    bool active;
+    bool header_queued;
+    size_t offset;
+    size_t header_length;
+    char header[96];
+} camera_transfer;
+
+static uint32_t crc32(const uint8_t *data, size_t size) {
+    uint32_t crc = 0xffffffffu;
+    while (size--) {
+        crc ^= *data++;
+        for (int i = 0; i < 8; ++i) {
+            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+        }
+    }
+    return ~crc;
+}
 
 // 送信
 static err_t send_text(struct tcp_pcb *pcb, const char *text) {
@@ -39,6 +60,83 @@ static err_t send_text(struct tcp_pcb *pcb, const char *text) {
         return err;
     }
     return tcp_output(pcb);
+}
+
+/* Queue a captured frame gradually so the lwIP send buffer is never overrun. */
+static void pump_camera_transfer(struct tcp_pcb *pcb) {
+    if (!camera_transfer.active || pcb == NULL) return;
+
+    const void *data;
+    size_t remaining;
+    if (!camera_transfer.header_queued) {
+        data = camera_transfer.header;
+        remaining = camera_transfer.header_length;
+    } else {
+        data = camera_get_frame() + camera_transfer.offset;
+        remaining = camera_get_frame_size() - camera_transfer.offset;
+    }
+
+    u16_t available = tcp_sndbuf(pcb);
+    if (available == 0) return;
+    if (!camera_transfer.header_queued && available < remaining) return;
+    size_t chunk = remaining;
+    if (chunk > available) chunk = available;
+    if (chunk > 4096) chunk = 4096;
+
+    err_t err = tcp_write(pcb, data, (u16_t)chunk, TCP_WRITE_FLAG_COPY);
+    if (err == ERR_MEM) return;
+    if (err != ERR_OK) {
+        printf("camera tcp_write failed: %d\n", err);
+        camera_transfer.active = false;
+        return;
+    }
+
+    if (!camera_transfer.header_queued) {
+        camera_transfer.header_queued = true;
+    } else {
+        camera_transfer.offset += chunk;
+        if (camera_transfer.offset == camera_get_frame_size()) {
+            camera_transfer.active = false;
+            printf("Camera frame queued for PC\n");
+        }
+    }
+    tcp_output(pcb);
+}
+
+static void process_capture_request(void) {
+    int request = capture_request;
+    if (request == 0 || !tcp_connected || camera_transfer.active) return;
+    capture_request = 0;
+
+    camera_status_t status = CAMERA_OK;
+    if (!camera_initialized) {
+        status = camera_init();
+        camera_initialized = status == CAMERA_OK;
+    }
+    if (status == CAMERA_OK) {
+        status = camera_set_test_pattern(request == 2);
+    }
+    if (status == CAMERA_OK) status = camera_capture_frame();
+
+    if (status != CAMERA_OK) {
+        char error[96];
+        snprintf(error, sizeof(error), "ERROR,CAMERA,%s\n",
+                 camera_status_string(status));
+        cyw43_arch_lwip_begin();
+        send_text(client_pcb, error);
+        cyw43_arch_lwip_end();
+        return;
+    }
+
+    const uint8_t *frame = camera_get_frame();
+    camera_transfer.header_length = (size_t)snprintf(
+        camera_transfer.header, sizeof(camera_transfer.header),
+        "FRAME,%u,%u,RGB565,%u,%08lx\n",
+        CAMERA_WIDTH, CAMERA_HEIGHT, (unsigned int)camera_get_frame_size(),
+        (unsigned long)crc32(frame, camera_get_frame_size()));
+    camera_transfer.header_queued = false;
+    camera_transfer.offset = 0;
+    camera_transfer.active = true;
 }
 
 // 温度センサ
@@ -83,6 +181,16 @@ static void handle_ground_command(const char *line, void *context) {
 
     printf("PC -> Pico: %s\n", line);
 
+    if (strcmp(line, "CAPTURE") == 0 || strcmp(line, "CAPTURE_TEST") == 0) {
+        if (capture_request != 0 || camera_transfer.active) {
+            send_text(client_pcb, "ERROR,CAMERA_BUSY\n");
+        } else {
+            capture_request = strcmp(line, "CAPTURE_TEST") == 0 ? 2 : 1;
+            send_text(client_pcb, "ACK,CAPTURE\n");
+        }
+        return;
+    }
+
     if (!command_handle_line(&command_state, line, reply, sizeof(reply))) {
         printf("command reply formatting failed\n");
         return;
@@ -107,6 +215,8 @@ static void on_tcp_error(void *arg, err_t err) {
     client_pcb = NULL;
     tcp_connected = false;
     tcp_connecting = false;
+    capture_request = 0;
+    camera_transfer.active = false;
 }
 
 // 受け取り
@@ -125,6 +235,8 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
         client_pcb = NULL;
         tcp_connected = false;
         tcp_connecting = false;
+        capture_request = 0;
+        camera_transfer.active = false;
         return tcp_close(pcb);
     }
 
@@ -223,6 +335,8 @@ int main(void) {
         // poll方式のWi-Fi/lwIP処理を進める。
         cyw43_arch_poll();
 
+        process_capture_request();
+
         // PCサーバが起動していなければ、1秒ごとに接続を再試行
         if (!tcp_connected && !tcp_connecting) {
             cyw43_arch_lwip_begin();
@@ -231,12 +345,18 @@ int main(void) {
         }
 
         // Pico -> PC: 2秒ごとに送信
-        if (tcp_connected &&
+        if (tcp_connected && !camera_transfer.active &&
             absolute_time_diff_us(get_absolute_time(), next_telemetry) <= 0) {
             cyw43_arch_lwip_begin();
             send_telemetry(client_pcb);
             cyw43_arch_lwip_end();
             next_telemetry = make_timeout_time_ms(TELEMETRY_INTERVAL_MS);
+        }
+
+        if (tcp_connected && camera_transfer.active) {
+            cyw43_arch_lwip_begin();
+            pump_camera_transfer(client_pcb);
+            cyw43_arch_lwip_end();
         }
 
         update_telemetry_led();
