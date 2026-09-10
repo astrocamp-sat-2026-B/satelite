@@ -81,15 +81,15 @@ static void begin_session_save(void);
 
 static const char DASHBOARD_HTML[] =
 "<!doctype html><html lang=\"ja\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Pico telemetry</title><style>"
-"*{box-sizing:border-box}body{margin:0;background:#0b121a;color:#e8f0f7;font-family:system-ui,sans-serif}main{max-width:1440px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}h1{margin:0;font-size:1.8rem}.sub{color:#9eb0c0;margin:4px 0}.actions{display:flex;gap:8px;flex-wrap:wrap}button,label.file,input.command{background:#182838;border:1px solid #38546d;color:#e8f0f7;border-radius:7px;padding:9px 12px;font:inherit}button,label.file{cursor:pointer}input.command{min-width:190px}button.primary{background:#1977b5}label.file input{display:none}.status{display:flex;gap:9px;align-items:center;margin:18px 0;padding:11px 13px;background:#111e2b;border:1px solid #293f53;border-radius:8px}.dot{width:10px;height:10px;border-radius:50%;background:#8192a2}.receiving{background:#42d99a}.stale{background:#f2b35a}.waiting{background:#64b7ff}.reconnecting{background:#f2b35a}.disconnected{background:#f06778}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.card,.section{background:#111e2b;border:1px solid #293f53;border-radius:10px}.card{padding:13px}.label{font-size:.76rem;color:#9eb0c0;text-transform:uppercase;letter-spacing:.06em}.value{font-size:1.45rem;font-weight:650;margin:7px 0 10px;font-variant-numeric:tabular-nums}.range{display:flex;gap:16px;font-size:.75rem;color:#9eb0c0}.range b{display:block;color:#e8f0f7;font-size:.86rem;margin-top:2px;font-weight:500}.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px;margin-top:10px}.section{padding:14px}.head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:8px}.head h2{font-size:1rem;margin:0}.meta{color:#9eb0c0;font-size:.82rem}.chart{width:100%;height:auto;display:block;background:#0b151f;border-radius:6px}.grid{stroke:#263d51;stroke-width:1}.axis{fill:#9eb0c0;font-size:11px}.line{fill:none;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}.temp{stroke:#49c4ff}.gyro{stroke:#9dde68}.pd0{stroke:#ffba5c}.pd1{stroke:#7dc9ff}.pd2{stroke:#e38fff}.pd3{stroke:#70e0b0}.scroll{max-height:540px;overflow:auto;border:1px solid #293f53;border-radius:7px}table{width:100%;border-collapse:collapse;font-size:.84rem}th,td{padding:9px 11px;border-bottom:1px solid #213447;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}tr.event td{background:#162636;color:#b9d7ea;text-align:left;font-style:italic}th{position:sticky;top:0;background:#182838;color:#c4d7e7;font-weight:500}th:first-child,td:first-child{text-align:left}@media(max-width:560px){main{padding:14px}.scroll{max-height:500px}input.command{min-width:140px}}</style></head><body><main>"
+"*{box-sizing:border-box}body{margin:0;background:#0b121a;color:#e8f0f7;font-family:system-ui,sans-serif}main{max-width:1800px;margin:auto;padding:12px}.top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}h1{margin:0;font-size:1.45rem}.sub{color:#9eb0c0;margin:3px 0}.actions{display:flex;gap:6px;flex-wrap:wrap}button,label.file,input.command{background:#182838;border:1px solid #38546d;color:#e8f0f7;border-radius:7px;padding:7px 9px;font:inherit;font-size:.88rem}button,label.file{cursor:pointer}button:disabled{cursor:default;opacity:.45}input.command{min-width:160px}button.primary{background:#1977b5}label.file input{display:none}.status{display:flex;gap:8px;align-items:center;margin:10px 0;padding:8px 10px;background:#111e2b;border:1px solid #293f53;border-radius:8px}.dot{width:10px;height:10px;border-radius:50%;background:#8192a2}.receiving{background:#42d99a}.stale{background:#f2b35a}.waiting{background:#64b7ff}.reconnecting{background:#f2b35a}.disconnected{background:#f06778}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px}.card,.section{background:#111e2b;border:1px solid #293f53;border-radius:10px}.card{padding:9px}.label{font-size:.69rem;color:#9eb0c0;text-transform:uppercase;letter-spacing:.05em}.value{font-size:1.18rem;font-weight:650;margin:4px 0 6px;font-variant-numeric:tabular-nums}.range{display:flex;gap:12px;font-size:.68rem;color:#9eb0c0}.range b{display:block;color:#e8f0f7;font-size:.78rem;margin-top:1px;font-weight:500}.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px;margin-top:10px}.section{padding:10px}.head{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:6px}.head h2{font-size:.96rem;margin:0}.meta{color:#9eb0c0;font-size:.76rem}.chart{width:100%;height:auto;display:block;background:#0b151f;border-radius:6px}.grid{stroke:#263d51;stroke-width:1}.axis{fill:#9eb0c0;font-size:11px}.line{fill:none;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}.temp{stroke:#49c4ff}.gyro{stroke:#9dde68}.pd0{stroke:#ffba5c}.pd1{stroke:#7dc9ff}.pd2{stroke:#e38fff}.pd3{stroke:#70e0b0}.scroll{max-height:180px;overflow:auto;border:1px solid #293f53;border-radius:7px}table{width:100%;border-collapse:collapse;font-size:.78rem}th,td{padding:6px 8px;border-bottom:1px solid #213447;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}tr.event td{background:#162636;color:#b9d7ea;text-align:left;font-style:italic}th{position:sticky;top:0;background:#182838;color:#c4d7e7;font-weight:500}th:first-child,td:first-child{text-align:left}@media(max-width:800px){main{padding:10px}.scroll{max-height:240px}input.command{min-width:140px}}</style></head><body><main>"
 "<header class=\"top\"><div><h1>Pico W Telemetry</h1><p class=\"sub\">Live monitor, command timeline, CSV export and replay</p></div><div class=\"actions\"><input class=\"command\" id=\"command-input\" placeholder=\"SERVO,123 or SET_VALUE,123\"><button class=\"primary\" id=\"send-command\" type=\"button\">Send command</button><button id=\"capture-camera\" type=\"button\">Capture camera</button><button id=\"save\" type=\"button\">Save CSV</button><label class=\"file\">Load CSV<input id=\"load\" type=\"file\" accept=\".csv,text/csv\"></label><button id=\"live\" type=\"button\">Resume live</button></div></header>"
-"<style>.board-section{margin-top:10px}.board-map{position:relative;max-width:330px;margin:auto;line-height:1}.board-map img{display:block;width:100%;height:auto;border-radius:8px}.sensor-dot{position:absolute;transform:translate(-50%,-50%);width:clamp(34px,6vw,54px);height:clamp(34px,6vw,54px);border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-line;line-height:1.08;font-size:clamp(9px,1.3vw,12px);font-weight:750;color:#fff;text-shadow:0 1px 2px #000;box-shadow:0 0 0 2px #101820,0 0 14px rgba(255,55,55,.65);transition:background .35s,box-shadow .35s}.board-key{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#9eb0c0;font-size:.82rem;margin:0 0 10px}.red-scale{width:120px;height:10px;border-radius:8px;background:linear-gradient(90deg,rgba(240,40,40,.2),rgba(240,40,40,1))}.camera-image{display:block;width:min(100%,420px);max-height:300px;object-fit:contain;background:#080e14;border-radius:8px;margin:auto}.photoreflector{stroke:#ff8be8}</style>"
-"<div class=\"status\"><span id=\"dot\" class=\"dot disconnected\"></span><span id=\"status\">Starting...</span></div><section id=\"metrics\" class=\"metrics\"></section>"
-"<section class=\"section\" style=\"margin-top:10px\"><div class=\"head\"><h2>Latest camera image</h2><span id=\"camera-name\" class=\"meta\">No image received</span></div><img id=\"camera-image\" class=\"camera-image\" alt=\"Latest OV7675 capture\" hidden></section>"
-"<section class=\"section\" style=\"margin-top:10px;padding:10px 14px\"><div class=\"head\" style=\"margin:0\"><h2>Graph range</h2><div style=\"display:flex;gap:9px;align-items:center;flex-wrap:wrap\"><input id=\"graph-window\" type=\"range\" min=\"0\" max=\"0\" value=\"0\" style=\"width:min(48vw,380px)\"><span id=\"graph-window-label\" class=\"meta\">Latest 60 seconds</span><button id=\"graph-latest\" type=\"button\">Latest</button></div></div></section>"
-"<section class=\"charts\"><article class=\"section\"><div class=\"head\"><h2>Temperature</h2><span class=\"meta\">deg C</span></div><svg id=\"temp-chart\" class=\"chart\" viewBox=\"0 0 720 250\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Gyro Z</h2><span class=\"meta\">dps</span></div><svg id=\"gyro-chart\" class=\"chart\" viewBox=\"0 0 720 250\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Photodiode ADC</h2><span class=\"meta\">PD0 / PD1 / PD2 / PD3</span></div><svg id=\"pd-chart\" class=\"chart\" viewBox=\"0 0 720 250\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Photoreflector</h2><span class=\"meta\">ADC</span></div><svg id=\"photoreflector-chart\" class=\"chart\" viewBox=\"0 0 720 250\"></svg></article></section>"
-"<section class=\"section\" style=\"margin-top:10px\"><div class=\"head\"><h2 id=\"history-title\">Command history</h2><div class=\"actions\"><span id=\"count\" class=\"meta\"></span><button id=\"history-mode\" type=\"button\">Show all history</button></div></div><div class=\"scroll\"><table><thead id=\"history-head\"><tr><th>Received</th><th>Direction / message</th></tr></thead><tbody id=\"rows\"></tbody></table></div></section>"
-"<section class=\"section board-section\"><div class=\"head\"><h2>Photodiode position map</h2><span class=\"meta\">PD0 upper-left, clockwise to PD3</span></div><div class=\"board-key\"><span>Low</span><span class=\"red-scale\" aria-label=\"Light red means low, dark red means high\"></span><span>High</span></div><div class=\"board-map\"><img src=\"/board-image.png\" alt=\"Satellite photodiode layout\"><div class=\"sensor-dot\" id=\"sensor0\" style=\"left:25%;top:13.7%\">PD0\n--</div><div class=\"sensor-dot\" id=\"sensor1\" style=\"left:75.4%;top:13.7%\">PD1\n--</div><div class=\"sensor-dot\" id=\"sensor2\" style=\"left:75.4%;top:86.7%\">PD2\n--</div><div class=\"sensor-dot\" id=\"sensor3\" style=\"left:25%;top:86.7%\">PD3\n--</div></div></section>"
+"<style>.workspace{display:grid;grid-template-columns:minmax(560px,1fr) minmax(300px,.48fr) minmax(290px,.42fr);grid-template-rows:auto auto;gap:10px;margin-top:10px;align-items:start}.workspace>.metrics{grid-column:1;grid-row:1;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.workspace .card{min-width:0}.camera-panel{grid-column:1;grid-row:2;justify-self:start;width:calc(50% - 5px);margin:0}.camera-content{display:flex;gap:9px;align-items:center}.camera-image{display:block;width:180px;height:135px;object-fit:contain;background:#080e14;border-radius:7px;flex:none}.camera-tools{min-width:0;display:grid;gap:7px}.camera-nav{display:flex;gap:5px;flex-wrap:wrap}.camera-link{padding:2px 5px;border-radius:4px;color:#bfe5ff;font-style:normal}.history-section{grid-column:2;grid-row:1 / span 2;align-self:stretch;min-height:620px;margin:0}.history-section .scroll{height:565px;max-height:calc(100vh - 230px)}.graph-stack{grid-column:3;grid-row:1 / span 2;display:grid;gap:6px;align-content:start;min-width:0}.graph-range{padding:8px}.graph-range .head{display:grid;gap:4px;align-items:start;margin:0!important}.graph-range .head>div{display:flex!important;width:100%;min-width:0}.graph-range input[type=range]{flex:1 1 0;min-width:0;width:auto!important}.graph-range .meta{white-space:nowrap}.graph-charts{display:grid;grid-template-columns:1fr;gap:6px;margin:0}.graph-charts .section{padding:8px}.board-section{grid-column:1;grid-row:2;justify-self:end;width:calc(50% - 5px);margin:0}.board-map{position:relative;max-width:180px;margin:auto;line-height:1}.board-map img{display:block;width:100%;height:auto;border-radius:8px}.sensor-dot{position:absolute;transform:translate(-50%,-50%);width:clamp(25px,3vw,34px);height:clamp(25px,3vw,34px);border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-line;line-height:1.08;font-size:clamp(7px,.85vw,9px);font-weight:750;color:#fff;text-shadow:0 1px 2px #000;box-shadow:0 0 0 2px #101820,0 0 14px rgba(255,55,55,.65);transition:background .35s,box-shadow .35s}.board-key{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:#9eb0c0;font-size:.72rem;margin:0 0 7px}.red-scale{width:80px;height:8px;border-radius:8px;background:linear-gradient(90deg,rgba(240,40,40,.2),rgba(240,40,40,1))}.command-marker{fill:rgba(255,202,92,.12);stroke:#ffd276;stroke-width:1.5;stroke-dasharray:4 3;cursor:help}.photoreflector{stroke:#ff8be8}@media(max-width:1180px){.workspace{grid-template-columns:minmax(480px,1fr) minmax(300px,360px)}.workspace>.metrics{grid-column:1;grid-row:1}.camera-panel{grid-column:1;grid-row:3}.board-section{grid-column:1;grid-row:3}.history-section{grid-column:1;grid-row:2}.graph-stack{grid-column:2;grid-row:1 / span 3}}@media(max-width:900px){.workspace{grid-template-columns:1fr;grid-template-rows:auto}.workspace>.metrics,.camera-panel,.graph-stack,.history-section,.board-section{grid-column:1;grid-row:auto;width:100%}.workspace>.metrics{grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}.history-section{min-height:0}.history-section .scroll{height:240px;max-height:240px}.camera-image{width:200px;height:150px}}</style>"
+"<div class=\"status\"><span id=\"dot\" class=\"dot disconnected\"></span><span id=\"status\">Starting...</span></div><div class=\"workspace\"><section id=\"metrics\" class=\"metrics\"></section>"
+"<section class=\"section camera-panel\"><div class=\"head\"><h2>Camera gallery</h2><span id=\"camera-name\" class=\"meta\">No image received</span></div><div class=\"camera-content\"><img id=\"camera-image\" class=\"camera-image\" alt=\"OV7675 capture\" hidden><div class=\"camera-tools\"><span id=\"camera-count\" class=\"meta\">No saved images</span><div class=\"camera-nav\"><button id=\"camera-prev\" type=\"button\" title=\"Previous image (Left Arrow)\">&lt;</button><button id=\"camera-next\" type=\"button\" title=\"Next image (Right Arrow)\">&gt;</button><button id=\"camera-latest\" type=\"button\">Latest</button></div><span class=\"meta\">Select a camera entry in history to open it.</span></div></div></section>"
+"<aside class=\"graph-stack\"><section class=\"section graph-range\"><div class=\"head\" style=\"margin:0\"><h2>Graph range</h2><div style=\"display:flex;gap:9px;align-items:center;flex-wrap:wrap\"><input id=\"graph-window\" type=\"range\" min=\"0\" max=\"0\" value=\"0\" style=\"width:min(28vw,340px)\"><span id=\"graph-window-label\" class=\"meta\">Live: latest 60 seconds</span><button id=\"graph-latest\" type=\"button\">Latest</button></div></div></section>"
+"<section class=\"charts graph-charts\"><article class=\"section\"><div class=\"head\"><h2>Temperature</h2><span class=\"meta\">-40 to 85 deg C</span></div><svg id=\"temp-chart\" class=\"chart\" viewBox=\"0 0 720 250\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Gyro Z</h2><span class=\"meta\">-2000 to 2000 dps</span></div><svg id=\"gyro-chart\" class=\"chart\" viewBox=\"0 0 720 250\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Photodiode ADC</h2><span class=\"meta\">0 to 4095</span></div><svg id=\"pd-chart\" class=\"chart\" viewBox=\"0 0 720 250\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Photoreflector</h2><span class=\"meta\">0 to 4095</span></div><svg id=\"photoreflector-chart\" class=\"chart\" viewBox=\"0 0 720 250\"></svg></article></section></aside>"
+"<section class=\"section history-section\"><div class=\"head\"><h2 id=\"history-title\">Command history</h2><div class=\"actions\"><span id=\"count\" class=\"meta\"></span><button id=\"history-mode\" type=\"button\">Show all history</button></div></div><div class=\"scroll\"><table><thead id=\"history-head\"><tr><th>Received</th><th>Direction / message</th></tr></thead><tbody id=\"rows\"></tbody></table></div></section>"
+"<section class=\"section board-section\"><div class=\"head\"><h2>Photodiode position map</h2><span class=\"meta\">PD0 upper-left, clockwise to PD3</span></div><div class=\"board-key\"><span>Low</span><span class=\"red-scale\" aria-label=\"Light red means low, dark red means high\"></span><span>High</span></div><div class=\"board-map\"><img src=\"/board-image.png\" alt=\"Satellite photodiode layout\"><div class=\"sensor-dot\" id=\"sensor0\" style=\"left:25%;top:13.7%\">PD0\n--</div><div class=\"sensor-dot\" id=\"sensor1\" style=\"left:75.4%;top:13.7%\">PD1\n--</div><div class=\"sensor-dot\" id=\"sensor2\" style=\"left:75.4%;top:86.7%\">PD2\n--</div><div class=\"sensor-dot\" id=\"sensor3\" style=\"left:25%;top:86.7%\">PD3\n--</div></div></section></div>"
 "</main><script>"
 "const $=id=>document.getElementById(id),fmt=(v,d=2)=>Number.isFinite(v)?v.toFixed(d):'NA',num=v=>Number.isFinite(v),esc=v=>String(v).replace(/[&<>]/g,c=>c==='&'?'&amp;':c==='<'?'&lt;':'&gt;');let current=null,loaded=false,graphEndTime=null,cameraShown='',historyMode='commands';"
 "const fields=[['Uptime',v=>v.uptime_s,' s',0],['Temperature',v=>v.temp_c,' C',2],['Gyro Z',v=>v.gyro_z_dps,' dps',2],['Command',v=>v.command_value,'',0],['PD0',v=>v.photodiode_adc?.[0],'',0],['PD1',v=>v.photodiode_adc?.[1],'',0],['PD2',v=>v.photodiode_adc?.[2],'',0],['PD3',v=>v.photodiode_adc?.[3],'',0],['Photoreflector',v=>v.photoreflector_adc,'',0],['Wi-Fi signal',v=>v.wifi_signal_quality,' %',0]];"
@@ -106,6 +106,18 @@ static const char DASHBOARD_HTML[] =
 "function load(file){const r=new FileReader();r.onload=()=>{const rows=String(r.result).trim().split(/\\r?\\n/),head=rows.shift().split(','),at=(a,k)=>a[head.indexOf(k)],n=(a,k)=>{const v=at(a,k);return v===undefined||v==='NA'?null:Number(v)},h=rows.filter(Boolean).map(z=>{const a=z.split(','),encoded=at(a,'event_text_encoded');return{type:at(a,'type')||'telemetry',received_at:at(a,'received_at')||'',event_text:encoded?decodeURIComponent(encoded):'',uptime_s:n(a,'uptime_s'),temp_c:n(a,'temp_c'),gyro_z_dps:n(a,'gyro_z_dps'),command_value:n(a,'command_value'),random:n(a,'random'),photodiode_adc:['pd0','pd1','pd2','pd3'].map(k=>n(a,k)),photoreflector_adc:n(a,'photoreflector_adc'),wifi_signal_quality:n(a,'wifi_signal_quality')}});loaded=true;graphEndTime=null;cameraShown='';render({dummy_mode:false,link_status:'disconnected',last_telemetry_age_s:null,latest:[...h].reverse().find(v=>v.type==='telemetry')||null,history:h})};r.readAsText(file)}"
 "async function sendCommand(forced){const input=$('command-input'),text=(forced??input.value).trim();if(!text)return;try{const response=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'text/plain'},body:text}),result=await response.json();if(!result.ok)throw Error('send failed');if(!forced)input.value='';loaded=false;await poll()}catch(e){$('status').textContent='Command send failed: Pico is not connected'}}"
 "$('save').onclick=save;$('load').onchange=e=>e.target.files[0]&&load(e.target.files[0]);$('live').onclick=()=>{loaded=false;graphEndTime=null;poll()};$('send-command').onclick=sendCommand;$('capture-camera').onclick=()=>sendCommand('CAPTURE');$('history-mode').onclick=()=>{historyMode=historyMode==='all'?'commands':'all';if(current)render(current)};$('command-input').onkeydown=e=>{if(e.key==='Enter')sendCommand()};$('graph-window').oninput=e=>{const t=(current?.history||[]).filter(v=>v.type==='telemetry'),i=Math.max(0,Math.min(t.length-1,Number(e.target.value)));if(t.length){graphEndTime=clockMs(t[i]);render(current)}};$('graph-latest').onclick=()=>{graphEndTime=null;if(current)render(current)};async function poll(){if(loaded)return;try{render(await (await fetch('/api/telemetry',{cache:'no-store'})).json())}catch(e){$('dot').className='dot disconnected';$('status').textContent='Dashboard connection error'}}poll();setInterval(poll,1000);"
+"function graphWindow(h){if(!h.length){$('graph-window').min=0;$('graph-window').max=0;$('graph-window').value=0;$('graph-window-label').textContent='No telemetry';return []}const times=h.map(clockMs),slider=$('graph-window'),live=graphEndTime===null;let index=h.length-1;if(!live){index=0;for(let i=0;i<times.length;i++){if(times[i]<=graphEndTime)index=i;else break}}slider.min=0;slider.max=h.length-1;slider.value=index;const end=times[index],start=end-60000;$('graph-window-label').textContent=live?'Live · latest 60 seconds':h[index].received_at+' · previous 60 seconds';return h.filter((v,i)=>i<=index&&times[i]>=start)}"
+"const chartRanges={'temp-chart':[-40,85],'gyro-chart':[-2000,2000],'pd-chart':[0,4095],'photoreflector-chart':[0,4095]};let graphStartTime=0,graphDisplayEndTime=0;"
+"function formatGraphTime(milliseconds){let seconds=((Math.floor(milliseconds/1000)%86400)+86400)%86400,hours=Math.floor(seconds/3600);seconds%=3600;const minutes=Math.floor(seconds/60);seconds%=60;return String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0')+':'+String(seconds).padStart(2,'0')}"
+"function graphWindow(h){if(!h.length){graphStartTime=graphDisplayEndTime=0;$('graph-window').min=0;$('graph-window').max=0;$('graph-window').value=0;$('graph-window-label').textContent='No telemetry';return []}const times=h.map(clockMs),slider=$('graph-window'),live=graphEndTime===null;let index=h.length-1;if(!live){index=0;for(let i=0;i<times.length;i++){if(times[i]<=graphEndTime)index=i;else break}}graphDisplayEndTime=times[index];graphStartTime=graphDisplayEndTime-60000;slider.min=0;slider.max=h.length-1;slider.value=index;$('graph-window-label').textContent=live?'Live: latest 60 seconds':h[index].received_at+' : previous 60 seconds';return h.filter((v,i)=>i<=index&&times[i]>=graphStartTime)}"
+"function plot(id,h,series){const svg=$(id),W=720,H=250,L=58,R=18,T=18,B=35,range=chartRanges[id]||[0,1],lo=range[0],hi=range[1],clamp=v=>Math.max(lo,Math.min(hi,v)),px=v=>L+(W-L-R)*Math.max(0,Math.min(1,(clockMs(v)-graphStartTime)/60000)),py=v=>T+(H-T-B)*(1-(clamp(v)-lo)/(hi-lo));let grid='';for(let i=0;i<5;i++){const y=T+(H-T-B)*i/4,value=hi-(hi-lo)*i/4,x=L+(W-L-R)*i/4,age=60-i*15;grid+='<line class=\\\"grid\\\" x1=\\\"'+L+'\\\" x2=\\\"'+(W-R)+'\\\" y1=\\\"'+y+'\\\" y2=\\\"'+y+'\\\"/><text class=\\\"axis\\\" x=\\\"3\\\" y=\\\"'+(y+4)+'\\\">'+value.toFixed(id==='temp-chart'||id==='gyro-chart'?1:0)+'</text><line class=\\\"grid\\\" x1=\\\"'+x+'\\\" x2=\\\"'+x+'\\\" y1=\\\"'+T+'\\\" y2=\\\"'+(H-B)+'\\\"/><text class=\\\"axis\\\" text-anchor=\\\"middle\\\" x=\\\"'+x+'\\\" y=\\\"'+(H-10)+'\\\">'+(age?' -'+age+'s':'now')+'</text>'}const paths=series.map(s=>{let started=false,path='';h.forEach(v=>{const n=s[1](v);if(num(n)){path+=(started?'L':'M')+px(v).toFixed(1)+','+py(n).toFixed(1);started=true}});return path?'<path class=\\\"line '+s[2]+'\\\" d=\\\"'+path+'\\\"/>':''}).join('');const markers=(current?.history||[]).filter(v=>v.type==='pc_command'&&clockMs(v)>=graphStartTime&&clockMs(v)<=graphDisplayEndTime).map(v=>{const x=px(v).toFixed(1),title=esc(v.received_at+' PC -> Pico > '+v.event_text);return '<g class=\\\"command-marker\\\"><title>'+title+'</title><rect x=\\\"'+(x-3)+'\\\" y=\\\"'+T+'\\\" width=\\\"6\\\" height=\\\"'+(H-T-B)+'\\\"/><line x1=\\\"'+x+'\\\" x2=\\\"'+x+'\\\" y1=\\\"'+T+'\\\" y2=\\\"'+(H-B)+'\\\"/></g>'}).join('');svg.innerHTML=grid+paths+markers+'<text class=\\\"axis\\\" x=\\\"'+L+'\\\" y=\\\"13\\\">'+formatGraphTime(graphStartTime)+'</text><text class=\\\"axis\\\" text-anchor=\\\"end\\\" x=\\\"'+(W-R)+'\\\" y=\\\"13\\\">'+formatGraphTime(graphDisplayEndTime)+'</text>'}"
+"let selectedCamera='',cameraFollowLatest=true;"
+"function cameraNames(d){const names=[];(d.history||[]).forEach(v=>{const m=/^Camera image saved: (camera_[A-Za-z0-9_.]+\\.bmp)$/.exec(v.event_text||'');if(m&&names.indexOf(m[1])<0)names.push(m[1])});return names}"
+"function renderCamera(d){const files=cameraNames(d),latest=d.latest_camera||'',image=$('camera-image');if(latest&&files.indexOf(latest)<0)files.push(latest);if(cameraFollowLatest&&latest)selectedCamera=latest;if(!selectedCamera||files.indexOf(selectedCamera)<0)selectedCamera=latest||files[files.length-1]||'';const name=selectedCamera,index=files.indexOf(name);$('camera-name').textContent=name||'No image received';$('camera-count').textContent=name?(index+1)+' / '+files.length:'No saved images';$('camera-prev').disabled=index<=0;$('camera-next').disabled=index<0||index>=files.length-1;if(!name){image.hidden=true;return}if(cameraShown!==name){cameraShown=name;image.onerror=()=>{if(cameraShown===name){$('camera-name').textContent=name+' (image file unavailable)';image.hidden=true}};image.src='/camera/'+encodeURIComponent(name);image.hidden=false}}"
+"function selectCamera(name,followLatest){selectedCamera=name||'';cameraFollowLatest=!!followLatest;if(current)renderCamera(current)}"
+"function decorateCameraHistory(){document.querySelectorAll('#rows tr.event td:last-child').forEach(cell=>{const m=/^Camera: Camera image saved: (camera_[A-Za-z0-9_.]+\\.bmp)$/.exec(cell.textContent.trim());if(!m||cell.dataset.cameraDecorated)return;const name=m[1];cell.dataset.cameraDecorated='1';cell.innerHTML='Camera: <button class=\\\"camera-link\\\" type=\\\"button\\\" data-camera-file=\\\"'+name+'\\\">Camera image saved: '+esc(name)+'</button>'})}"
+"new MutationObserver(decorateCameraHistory).observe($('rows'),{childList:true});document.addEventListener('click',e=>{const button=e.target.closest('[data-camera-file]');if(button)selectCamera(button.dataset.cameraFile,false)});$('camera-prev').onclick=()=>{const files=current?cameraNames(current):[],index=files.indexOf(selectedCamera);if(index>0)selectCamera(files[index-1],false)};$('camera-next').onclick=()=>{const files=current?cameraNames(current):[],index=files.indexOf(selectedCamera);if(index>=0&&index<files.length-1)selectCamera(files[index+1],false)};$('camera-latest').onclick=()=>selectCamera(current?.latest_camera||'',true);"
+"document.addEventListener('keydown',e=>{const target=e.target,editing=target?.matches?.('input,textarea,select')||target?.isContentEditable;if(editing||e.altKey||e.ctrlKey||e.metaKey)return;if(e.key==='c'||e.key==='C'){e.preventDefault();sendCommand('CAPTURE')}else if(e.key==='ArrowLeft'){e.preventDefault();$('camera-prev').click()}else if(e.key==='ArrowRight'){e.preventDefault();$('camera-next').click()}});"
 "</script></body></html>";
 
 static int send_all(SOCKET socket, const char *data, int length) {
@@ -422,6 +434,35 @@ static bool build_camera_path(char *path, size_t path_size, const SYSTEMTIME *no
     return written > 0 && (size_t)written < path_size;
 }
 
+/* Only files created by this program can be requested through /camera/<name>. */
+static bool camera_filename_is_safe(const char *filename) {
+    size_t length;
+
+    if (!filename) return false;
+    length = strlen(filename);
+    if (length <= strlen("camera_.bmp") || strncmp(filename, "camera_", 7) != 0 ||
+        strcmp(filename + length - 4, ".bmp") != 0) return false;
+    for (size_t i = 0; i < length; ++i) {
+        unsigned char c = (unsigned char)filename[i];
+        if (!(isalnum(c) || c == '_' || c == '.')) return false;
+    }
+    return true;
+}
+
+static bool build_saved_camera_path(char *path, size_t path_size, const char *filename) {
+    char executable_path[MAX_PATH];
+    char *separator;
+    DWORD length = GetModuleFileNameA(NULL, executable_path, sizeof(executable_path));
+    int written;
+
+    if (!camera_filename_is_safe(filename) || length == 0 || length >= sizeof(executable_path)) return false;
+    separator = strrchr(executable_path, '\\');
+    if (!separator) return false;
+    *separator = '\0';
+    written = snprintf(path, path_size, "%s\\captures\\%s", executable_path, filename);
+    return written > 0 && (size_t)written < path_size;
+}
+
 /* Convert the OV7675 RGB565 payload to a browser-displayable BMP. */
 static bool save_rgb565_bmp(const uint8_t *frame, unsigned width, unsigned height,
                              char *filename, size_t filename_size) {
@@ -459,7 +500,8 @@ static bool save_rgb565_bmp(const uint8_t *frame, unsigned width, unsigned heigh
         unsigned source_y = height - 1u - output_y;
         for (unsigned x = 0; x < width; ++x) {
             size_t position = ((size_t)source_y * width + x) * 2u;
-            uint16_t pixel = ((uint16_t)frame[position] << 8) | frame[position + 1];
+            /* PIO/DMA stores this camera's RGB565 bytes as low byte then high byte. */
+            uint16_t pixel = ((uint16_t)frame[position + 1] << 8) | frame[position];
             uint8_t bgr[3] = {
                 (uint8_t)(((pixel & 0x1fu) * 255u) / 31u),
                 (uint8_t)((((pixel >> 5) & 0x3fu) * 255u) / 63u),
@@ -621,16 +663,12 @@ static void http_reply_board_image(SOCKET client) {
     fclose(file);
 }
 
-static void http_reply_latest_camera(SOCKET client) {
-    char path[MAX_PATH];
+static void http_reply_camera_path(SOCKET client, const char *path) {
     char header[256];
     char buffer[8192];
     long size;
     FILE *file;
 
-    EnterCriticalSection(&camera_lock);
-    snprintf(path, sizeof(path), "%s", latest_camera_path);
-    LeaveCriticalSection(&camera_lock);
     if (!path[0] || !(file = fopen(path, "rb"))) {
         http_reply(client, "text/plain", "No camera image has been received");
         return;
@@ -651,6 +689,41 @@ static void http_reply_latest_camera(SOCKET client) {
         }
     }
     fclose(file);
+}
+
+static void http_reply_latest_camera(SOCKET client) {
+    char path[MAX_PATH];
+
+    EnterCriticalSection(&camera_lock);
+    snprintf(path, sizeof(path), "%s", latest_camera_path);
+    LeaveCriticalSection(&camera_lock);
+    http_reply_camera_path(client, path);
+}
+
+static void http_reply_saved_camera(SOCKET client, const char *request) {
+    static const char prefix[] = "GET /camera/";
+    char filename[MAX_PATH];
+    char path[MAX_PATH];
+    const char *name = request + sizeof(prefix) - 1;
+    const char *end = strchr(name, ' ');
+    size_t length;
+
+    if (!end || end == name) {
+        http_reply(client, "text/plain", "Camera image is unavailable");
+        return;
+    }
+    length = (size_t)(end - name);
+    if (length >= sizeof(filename)) {
+        http_reply(client, "text/plain", "Camera image is unavailable");
+        return;
+    }
+    memcpy(filename, name, length);
+    filename[length] = '\0';
+    if (!build_saved_camera_path(path, sizeof(path), filename)) {
+        http_reply(client, "text/plain", "Camera image is unavailable");
+        return;
+    }
+    http_reply_camera_path(client, path);
 }
 
 static int receive_http_request(SOCKET client, char *request, size_t capacity) {
@@ -697,6 +770,8 @@ static DWORD WINAPI http_client(LPVOID parameter) {
         } else if (strncmp(request, "GET /camera/latest.bmp", 22) == 0 &&
                    (request[22] == ' ' || request[22] == '?')) {
             http_reply_latest_camera(client);
+        } else if (strncmp(request, "GET /camera/", 12) == 0) {
+            http_reply_saved_camera(client, request);
         } else http_reply(client, "text/html", DASHBOARD_HTML);
     }
     closesocket(client);
@@ -743,8 +818,8 @@ static bool generate_dummy_camera_image(void) {
             uint16_t blue = (uint16_t)(((x + y) * 31u) / (width + height - 2u));
             uint16_t pixel = (uint16_t)((red << 11) | (green << 5) | blue);
             size_t position = ((size_t)y * width + x) * 2u;
-            frame[position] = (uint8_t)(pixel >> 8);
-            frame[position + 1] = (uint8_t)pixel;
+            frame[position] = (uint8_t)pixel;
+            frame[position + 1] = (uint8_t)(pixel >> 8);
         }
     }
     saved = save_rgb565_bmp(frame, width, height, filename, sizeof(filename));
