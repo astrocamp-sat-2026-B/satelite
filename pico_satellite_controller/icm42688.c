@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #include "hardware/i2c.h"
 #include "pico/stdlib.h"
@@ -58,6 +59,19 @@ bool icm42688_init(void) {
     // Gyroscope: ±2000 dps, 1 kHz.
     if (!icm42688_write(ICM42688_REG_GYRO_CONFIG0, 0x06)) return false;
     sleep_ms(50);
+    return true;
+}
+
+bool icm42688_read_gyro_z_centi_dps(int32_t *gyro_z_centi_dps) {
+    uint8_t raw[2];
+
+    if (gyro_z_centi_dps == NULL ||
+        !icm42688_read(ICM42688_REG_GYRO_DATA_Z1, raw, sizeof(raw))) {
+        return false;
+    }
+
+    const int16_t gyro_z = (int16_t)(((uint16_t)raw[0] << 8) | raw[1]);
+    *gyro_z_centi_dps = (int32_t)(gyro_z * (100.0f / 16.4f));
     return true;
 }
 

@@ -216,7 +216,6 @@ int main(void) {
     absolute_time_t next_telemetry = make_timeout_time_ms(TELEMETRY_INTERVAL_MS);
 
     while (true) {
-        cyw43_arch_poll();
         // poll方式のWi-Fi/lwIP処理を進める。
         cyw43_arch_poll();
 
