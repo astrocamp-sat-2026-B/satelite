@@ -12,6 +12,8 @@ typedef struct {
     int32_t command_value;
     int32_t gyro_z_centi_dps;
     bool gyro_z_valid;
+    int32_t gyro_z_angle_centi_deg;
+    bool gyro_z_angle_valid;
     uint16_t photodiode_adc[4];
     uint16_t photoreflector_adc;
     bool photoreflector_valid;
