@@ -4,6 +4,7 @@
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
 #include "icm42688.h"
+#include "photodiode.h"
 
 static int read_internal_temperature_centi_c(void) {
     const float conversion_factor = 3.3f / 4095.0f;
@@ -18,6 +19,7 @@ void telemetry_init(void) {
     adc_init();
     adc_set_temp_sensor_enabled(true);
     adc_select_input(ADC_TEMPERATURE_CHANNEL_NUM);
+    photodiode_init();
 }
 
 void telemetry_collect(telemetry_data_t *telemetry, int32_t command_value) {
@@ -27,4 +29,5 @@ void telemetry_collect(telemetry_data_t *telemetry, int32_t command_value) {
     telemetry->command_value = command_value;
     telemetry->gyro_z_valid =
         icm42688_read_gyro_z_centi_dps(&telemetry->gyro_z_centi_dps);
+    photodiode_read_all(telemetry->photodiode_adc);
 }

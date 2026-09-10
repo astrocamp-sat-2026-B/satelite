@@ -12,6 +12,7 @@ typedef struct {
     int32_t command_value;
     int32_t gyro_z_centi_dps;
     bool gyro_z_valid;
+    uint16_t photodiode_adc[4];
 } telemetry_data_t;
 
 void telemetry_init(void);

@@ -42,25 +42,33 @@ bool protocol_encode_telemetry(const telemetry_data_t *telemetry, char *message,
         length = snprintf(
             message,
             message_size,
-            "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=%ld.%02d\n",
+            "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=%ld.%02d,photodiode_adc=%u|%u|%u|%u\n",
             (unsigned long)telemetry->uptime_s,
             telemetry->temperature_centi_c / 100,
             fraction,
             (unsigned long)telemetry->random_value,
             (long)telemetry->command_value,
             (long)(telemetry->gyro_z_centi_dps / 100),
-            gyro_fraction
+            gyro_fraction,
+            (unsigned int)telemetry->photodiode_adc[0],
+            (unsigned int)telemetry->photodiode_adc[1],
+            (unsigned int)telemetry->photodiode_adc[2],
+            (unsigned int)telemetry->photodiode_adc[3]
         );
     } else {
         length = snprintf(
             message,
             message_size,
-            "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=NA\n",
+            "TELEMETRY,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=NA,photodiode_adc=%u|%u|%u|%u\n",
             (unsigned long)telemetry->uptime_s,
             telemetry->temperature_centi_c / 100,
             fraction,
             (unsigned long)telemetry->random_value,
-            (long)telemetry->command_value
+            (long)telemetry->command_value,
+            (unsigned int)telemetry->photodiode_adc[0],
+            (unsigned int)telemetry->photodiode_adc[1],
+            (unsigned int)telemetry->photodiode_adc[2],
+            (unsigned int)telemetry->photodiode_adc[3]
         );
     }
 

@@ -7,7 +7,7 @@
 
 #include "telemetry.h"
 
-#define PROTOCOL_MAX_MESSAGE_LENGTH 160
+#define PROTOCOL_MAX_MESSAGE_LENGTH 256
 
 typedef void (*protocol_line_handler_t)(const char *line, void *context);
 
