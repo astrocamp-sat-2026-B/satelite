@@ -13,6 +13,8 @@ typedef struct {
     int32_t gyro_z_centi_dps;
     bool gyro_z_valid;
     uint16_t photodiode_adc[4];
+    uint16_t photoreflector_adc;
+    bool photoreflector_valid;
 } telemetry_data_t;
 
 void telemetry_init(void);

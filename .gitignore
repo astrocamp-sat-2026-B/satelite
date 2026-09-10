@@ -1,6 +1,7 @@
 # Prerequisites
 *.d
-
+servo/blink
+build*/
 # Object files
 *.o
 *.ko

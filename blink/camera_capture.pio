@@ -1,0 +1,26 @@
+; Fixed seminar wiring: D0..7=GP0..7, PCLK=22, HREF=26, VSYNC=27.
+; TX: height-1, bytes-per-line-1. RX: four bytes per word, little endian.
+.program camera_capture
+    pull block
+    mov y, osr
+    pull block
+    wait 1 gpio 27
+    wait 0 gpio 27
+line:
+    mov x, osr
+    wait 1 gpio 26
+byte:
+    wait 0 gpio 22
+    wait 1 gpio 22
+    jmp pin valid
+    irq 1
+halt_error:
+    jmp halt_error
+valid:
+    in pins, 8
+    jmp x-- byte
+    wait 0 gpio 26
+    jmp y-- line
+    irq 0
+halt:
+    jmp halt
