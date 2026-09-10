@@ -39,15 +39,19 @@ static camera_status_t sensor_init(void) {
     if (sensor_pid != 0x76 || sensor_ver != 0x73) return CAMERA_ERROR_SENSOR_ID;
     if (!reg_write(0x12, 0x80)) return CAMERA_ERROR_REGISTER_WRITE;
     sleep_ms(100);
-    // Use documented OV7675 controls; retain factory ISP defaults.
-    // Do not apply OV7670 reserved-register/scaling tables to this sensor.
+    // Use documented OV7675 controls and the OV7675-specific QVGA window.
     const uint8_t settings[][2] = {
         {0x6b, 0x0a}, // PLL bypass, retain low reserved bits
-        {0x12, 0x14}, // QVGA + RGB
+        {0x12, 0x04}, // RGB, VGA source window; QVGA is produced by DCW below
         {0x8c, 0x00}, // RGB444 off
         {0x40, 0xd0}, // full-range RGB565
         {0x15, 0x00}, // positive HREF/VSYNC, free-running PCLK
-        {0x0c, 0x00}, // no byte swap
+        {0x0c, 0x04}, // enable downsample/crop/window; no byte swap
+        {0x3e, 0x11}, // enable DCW and divide pixel clock by 2
+        {0x72, 0x22}, // downsample both axes equally (preserves aspect ratio)
+        {0x73, 0xf2}, // QVGA DCW pixel-clock divider
+        {0x17, 0x15}, {0x18, 0x03}, {0x32, 0xc0}, // horizontal window
+        {0x19, 0x03}, {0x1a, 0x7b}, {0x03, 0xf0}, // vertical window
         {0x13, 0xcf}, // fast AEC, AGC, AWB; banding off for initial bring-up
         {0x70, 0x3a}, {0x71, 0x35}, // sensor test pattern off
         {0x11, 0x83}, // retain CLKRC bit7; divide clock by 4

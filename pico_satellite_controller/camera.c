@@ -44,8 +44,22 @@ static camera_status_t sensor_init(void) {
     sleep_ms(100);
 
     const uint8_t settings[][2] = {
-        {0x6b, 0x0a}, {0x12, 0x14}, {0x8c, 0x00}, {0x40, 0xd0},
-        {0x15, 0x00}, {0x0c, 0x00}, {0x13, 0xcf},
+        {0x6b, 0x0a},
+        {0x12, 0x04}, // RGB, VGA source window; QVGA is produced by DCW below
+        {0x8c, 0x00}, {0x40, 0xd0},
+        {0x15, 0x00},
+
+        // OV7675 QVGA window/downsampling.  Setting COM7 to QVGA alone can
+        // leave the horizontal and vertical sampling ratios inconsistent,
+        // which makes a nominal 320x240 frame look stretched or squeezed.
+        {0x0c, 0x04}, // COM3: enable downsample/crop/window
+        {0x3e, 0x11}, // COM14: enable DCW and divide pixel clock by 2
+        {0x72, 0x22}, // downsample horizontal and vertical axes equally
+        {0x73, 0xf2}, // pixel-clock divider used by the QVGA DCW mode
+        {0x17, 0x15}, {0x18, 0x03}, {0x32, 0xc0}, // horizontal window
+        {0x19, 0x03}, {0x1a, 0x7b}, {0x03, 0xf0}, // vertical window
+
+        {0x13, 0xcf},
         {0x70, 0x3a}, {0x71, 0x35}, {0x11, 0x83},
     };
     for (uint i = 0; i < sizeof(settings) / sizeof(settings[0]); ++i) {
