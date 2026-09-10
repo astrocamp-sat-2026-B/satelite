@@ -33,25 +33,21 @@ project(blink C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-# Add executable. Default name is the project name, version 0.1
+# Reusable camera component. Other executables can link camera_component.
+add_library(camera_component STATIC camera.c)
+pico_generate_pio_header(camera_component ${CMAKE_CURRENT_LIST_DIR}/camera_capture.pio)
+target_include_directories(camera_component PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+target_link_libraries(camera_component PUBLIC
+    pico_stdlib
+    hardware_i2c
+    hardware_pwm
+    hardware_pio
+    hardware_dma
+)
+target_compile_options(camera_component PRIVATE -Wall -Wextra)
 
-add_executable(blink
-    blink.c
-    )
-
-# pull in common dependencies
-target_link_libraries(blink pico_stdlib)
-
-if (PICO_CYW43_SUPPORTED)
-    target_link_libraries(blink pico_cyw43_arch_none)
-endif()
-
-# create map/bin/hex file etc.
-pico_add_extra_outputs(blink)
-
-add_executable(camera camera.c)
-pico_generate_pio_header(camera ${CMAKE_CURRENT_LIST_DIR}/camera_capture.pio)
-target_link_libraries(camera pico_stdlib hardware_i2c hardware_pwm hardware_pio hardware_dma)
+add_executable(camera camera_app.c)
+target_link_libraries(camera PRIVATE camera_component hardware_clocks)
 pico_enable_stdio_usb(camera 1)
 pico_enable_stdio_uart(camera 0)
 target_compile_options(camera PRIVATE -Wall -Wextra)
