@@ -40,6 +40,7 @@ add_executable(pico_satellite_controller
         telemetry.c
         protocol.c
         command.c
+        angle_integrator.c
         icm42688.c
         photodiode.c
         photoreflector.c
@@ -66,6 +67,7 @@ target_link_libraries(pico_satellite_controller
         hardware_pio
         hardware_dma
         pico_rand
+        pico_multicore
         pico_cyw43_arch_lwip_poll)
 
 # Add the standard include files to the build

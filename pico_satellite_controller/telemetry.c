@@ -31,13 +31,30 @@ void telemetry_collect(telemetry_data_t *telemetry, int32_t command_value) {
     telemetry->temperature_centi_c = read_internal_temperature_centi_c();
     telemetry->random_value = get_rand_32() % 1000;
     telemetry->command_value = command_value;
-    telemetry->gyro_z_valid =
-        icm42688_read_gyro_z_centi_dps(&telemetry->gyro_z_centi_dps);
-
-    const float gyro_z_angle_deg = icm42688_gyro_z_angle_deg();
-    telemetry->gyro_z_angle_valid = !isnan(gyro_z_angle_deg);
-    telemetry->gyro_z_angle_centi_deg =
-        telemetry->gyro_z_angle_valid ? (int32_t)(gyro_z_angle_deg * 100.0f) : 0;
+    icm42688_attitude_t attitude;
+    telemetry->gyro_z_valid = icm42688_get_attitude(&attitude);
+    telemetry->gyro_z_angle_valid = telemetry->gyro_z_valid;
+    if (telemetry->gyro_z_valid) {
+        telemetry->gyro_z_centi_dps =
+            (int32_t)lroundf(attitude.gyro_dps[2] * 100.0f);
+        telemetry->gyro_z_angle_centi_deg =
+            (int32_t)lroundf(attitude.yaw_deg * 100.0f);
+        telemetry->roll_centi_deg =
+            (int32_t)lroundf(attitude.roll_deg * 100.0f);
+        telemetry->pitch_centi_deg =
+            (int32_t)lroundf(attitude.pitch_deg * 100.0f);
+        telemetry->attitude_calibrated = attitude.calibrated;
+        telemetry->imu_sample_count = attitude.sample_count;
+        telemetry->imu_rejected_samples = attitude.rejected_samples;
+    } else {
+        telemetry->gyro_z_centi_dps = 0;
+        telemetry->gyro_z_angle_centi_deg = 0;
+        telemetry->roll_centi_deg = 0;
+        telemetry->pitch_centi_deg = 0;
+        telemetry->attitude_calibrated = false;
+        telemetry->imu_sample_count = 0;
+        telemetry->imu_rejected_samples = 0;
+    }
 
     photodiode_read_all(telemetry->photodiode_adc);
     telemetry->photoreflector_adc = photoreflector_read_raw();
