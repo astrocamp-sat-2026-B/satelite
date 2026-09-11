@@ -66,9 +66,10 @@ void attitude_control_init(attitude_control_t *control,
     control->status.mode = ATTITUDE_CONTROL_IDLE;
 }
 
-bool attitude_control_start(attitude_control_t *control, float target_yaw_deg) {
+static bool start_control(attitude_control_t *control, float target_yaw_deg,
+                          attitude_control_mode_t mode) {
     if (control == NULL || !isfinite(target_yaw_deg)) return false;
-    control->status.mode = ATTITUDE_CONTROL_SLEW;
+    control->status.mode = mode;
     control->status.fault = ATTITUDE_CONTROL_FAULT_NONE;
     control->status.target_yaw_deg = target_yaw_deg;
     control->status.angle_error_deg = 0.0f;
@@ -83,6 +84,14 @@ bool attitude_control_start(attitude_control_t *control, float target_yaw_deg) {
     control->status.capture_pending = false;
     control->status.capture_issued = false;
     return true;
+}
+
+bool attitude_control_start(attitude_control_t *control, float target_yaw_deg) {
+    return start_control(control, target_yaw_deg, ATTITUDE_CONTROL_SLEW);
+}
+
+bool attitude_control_hold(attitude_control_t *control, float target_yaw_deg) {
+    return start_control(control, target_yaw_deg, ATTITUDE_CONTROL_HOLD);
 }
 
 void attitude_control_abort(attitude_control_t *control) {
