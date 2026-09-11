@@ -4,8 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "angle_integrator.h"
-
 #define ICM42688_SAMPLE_PERIOD_US 5000u
 
 typedef struct {
@@ -31,7 +29,6 @@ bool icm42688_init(void);
 bool icm42688_read_sample(icm42688_sample_t *sample);
 bool icm42688_update(void);
 bool icm42688_get_attitude(icm42688_attitude_t *attitude);
-void icm42688_set_integration_method(angle_integration_method_t method);
 
 bool icm42688_read_gyro_z_centi_dps(int32_t *gyro_z_centi_dps);
 float icm42688_gyro_z_dps(void);

@@ -220,26 +220,6 @@ static void handle_ground_command(const char *line, void *context) {
         return;
     }
 
-    if (strncmp(line, "INTEGRATION,", 12) == 0) {
-        angle_integration_method_t method;
-        if (strcmp(line + 12, "TRAPEZOID") == 0) {
-            method = ANGLE_INTEGRATION_TRAPEZOID;
-        } else if (strcmp(line + 12, "SIMPSON") == 0) {
-            method = ANGLE_INTEGRATION_SIMPSON;
-        } else if (strcmp(line + 12, "CHEBYSHEV") == 0) {
-            method = ANGLE_INTEGRATION_CHEBYSHEV;
-        } else if (strcmp(line + 12, "GAUSS") == 0) {
-            method = ANGLE_INTEGRATION_GAUSS;
-        } else {
-            send_text(client_pcb,
-                      "ERROR,INTEGRATION,TRAPEZOID|SIMPSON|CHEBYSHEV|GAUSS\n");
-            return;
-        }
-        icm42688_set_integration_method(method);
-        send_text(client_pcb, "ACK,INTEGRATION\n");
-        return;
-    }
-
     if (strcmp(line, "STREAM_START") == 0 ||
         strncmp(line, "STREAM_START,", 13) == 0) {
         uint32_t interval = CAMERA_STREAM_INTERVAL_MS;

@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "angle_integrator.h"
 #include "hardware/i2c.h"
 #include "pico/critical_section.h"
 #include "pico/stdlib.h"
@@ -27,9 +28,9 @@
 #define REG_WHO_AM_I 0x75
 #define WHO_AM_I_VALUE 0x47
 
-/* 200 Hz, gyro +/-250 dps (131 LSB/dps), accel +/-2 g. */
-#define GYRO_CONFIG0_VALUE 0x67
-#define ACCEL_CONFIG0_VALUE 0x67
+/* 1 kHz sensor ODR, gyro +/-250 dps, accel +/-2 g; estimator runs at 200 Hz. */
+#define GYRO_CONFIG0_VALUE 0x66
+#define ACCEL_CONFIG0_VALUE 0x66
 #define GYRO_SENSITIVITY_LSB_PER_DPS 131.0f
 #define ACCEL_SENSITIVITY_LSB_PER_G 16384.0f
 
@@ -89,10 +90,13 @@ static bool read_registers(uint8_t reg, uint8_t *buffer, size_t length) {
 
 bool icm42688_read_sample(icm42688_sample_t *sample) {
     uint8_t raw[14];
+    const uint64_t read_start_us = time_us_64();
     if (sample == NULL || !read_registers(REG_TEMP_DATA1, raw, sizeof(raw))) {
         return false;
     }
-    sample->timestamp_us = time_us_64();
+    const uint64_t read_end_us = time_us_64();
+    /* Midpoint removes the approximately constant I2C transfer delay. */
+    sample->timestamp_us = read_start_us + (read_end_us - read_start_us) / 2u;
     sample->temperature_c = (float)decode_i16(&raw[0]) / 132.48f + 25.0f;
     for (size_t axis = 0; axis < 3; ++axis) {
         sample->acceleration_g[axis] =
@@ -196,8 +200,7 @@ static bool calibrate_stationary(void) {
 bool icm42688_init(void) {
     memset(&estimator, 0, sizeof(estimator));
     estimator.quaternion[0] = 1.0f;
-    angle_integrator_init(&estimator.yaw_integrator,
-                          ANGLE_INTEGRATION_SIMPSON);
+    angle_integrator_init(&estimator.yaw_integrator);
     if (!lock_initialized) {
         critical_section_init(&estimator_lock);
         lock_initialized = true;
@@ -218,10 +221,10 @@ bool icm42688_init(void) {
     sleep_ms(1);
     if (!write_register(REG_GYRO_CONFIG0, GYRO_CONFIG0_VALUE) ||
         !write_register(REG_ACCEL_CONFIG0, ACCEL_CONFIG0_VALUE)) return false;
-    /* Third-order UI filters, about 24 Hz bandwidth at 200 Hz ODR. */
+    /* Third-order UI filters, about 24 Hz bandwidth at 1 kHz ODR. */
     if (!write_register(REG_GYRO_CONFIG1, 0x0A) ||
         !write_register(REG_ACCEL_CONFIG1, 0x14) ||
-        !write_register(REG_GYRO_ACCEL_CONFIG0, 0x55)) return false;
+        !write_register(REG_GYRO_ACCEL_CONFIG0, 0x77)) return false;
     sleep_ms(50);
     estimator.calibrated = calibrate_stationary();
     estimator.output.calibrated = estimator.calibrated;
@@ -243,10 +246,15 @@ bool icm42688_update(void) {
         dt_s = (float)(sample.timestamp_us - estimator.last_timestamp_us) * 1.0e-6f;
     }
     estimator.last_timestamp_us = sample.timestamp_us;
-    if (!(dt_s > 0.0f) || dt_s > MAX_VALID_DT_S) {
+    if (!(dt_s > 0.0f)) {
         ++estimator.output.rejected_samples;
         critical_section_exit(&estimator_lock);
         return false;
+    }
+    const bool acquisition_gap = dt_s > MAX_VALID_DT_S;
+    if (acquisition_gap) {
+        ++estimator.output.rejected_samples;
+        dt_s = (float)ICM42688_SAMPLE_PERIOD_US * 1.0e-6f;
     }
 
     for (size_t axis = 0; axis < 3; ++axis) {
@@ -310,9 +318,17 @@ bool icm42688_update(void) {
     }
 
     quaternion_update(corrected_gyro, estimator.filtered_accel, dt_s);
-    const double yaw = angle_integrator_update(&estimator.yaw_integrator,
-                                                sample.timestamp_us,
-                                                corrected_gyro[2]);
+    double yaw;
+    if (acquisition_gap) {
+        angle_integrator_discontinuity(&estimator.yaw_integrator,
+                                      sample.timestamp_us,
+                                      corrected_gyro[2]);
+        yaw = angle_integrator_value(&estimator.yaw_integrator);
+    } else {
+        yaw = angle_integrator_update(&estimator.yaw_integrator,
+                                      sample.timestamp_us,
+                                      corrected_gyro[2]);
+    }
     const float q0 = estimator.quaternion[0];
     const float q1 = estimator.quaternion[1];
     const float q2 = estimator.quaternion[2];
@@ -340,14 +356,6 @@ bool icm42688_get_attitude(icm42688_attitude_t *attitude) {
     *attitude = estimator.output;
     critical_section_exit(&estimator_lock);
     return attitude->valid;
-}
-
-void icm42688_set_integration_method(angle_integration_method_t method) {
-    if (method > ANGLE_INTEGRATION_GAUSS) return;
-    critical_section_enter_blocking(&estimator_lock);
-    angle_integrator_init(&estimator.yaw_integrator, method);
-    estimator.output.yaw_deg = 0.0f;
-    critical_section_exit(&estimator_lock);
 }
 
 bool icm42688_read_gyro_z_centi_dps(int32_t *gyro_z_centi_dps) {
