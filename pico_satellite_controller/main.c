@@ -407,7 +407,11 @@ static bool start_slew(float requested_angle_deg, bool relative) {
     const float target = relative
         ? attitude.yaw_deg + requested_angle_deg : requested_angle_deg;
     servo_set_speed(0);
-    attitude_control_start(&attitude_control, target);
+    if (relative) {
+        attitude_control_start_relative(&attitude_control, target);
+    } else {
+        attitude_control_start(&attitude_control, target);
+    }
     reported_control_mode = ATTITUDE_CONTROL_SLEW;
     reported_control_fault = ATTITUDE_CONTROL_FAULT_NONE;
 

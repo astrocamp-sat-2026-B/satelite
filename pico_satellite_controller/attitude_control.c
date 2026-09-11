@@ -72,7 +72,8 @@ void attitude_control_init(attitude_control_t *control,
 }
 
 static bool start_control(attitude_control_t *control, float target_yaw_deg,
-                          attitude_control_mode_t mode) {
+                          attitude_control_mode_t mode,
+                          bool wrap_angle_error) {
     if (control == NULL || !isfinite(target_yaw_deg)) return false;
     control->status.mode = mode;
     control->status.fault = ATTITUDE_CONTROL_FAULT_NONE;
@@ -88,15 +89,21 @@ static bool start_control(attitude_control_t *control, float target_yaw_deg,
     control->status.elapsed_ms = 0u;
     control->status.settled_ms = 0u;
     control->status.saturated_ms = 0u;
+    control->wrap_angle_error = wrap_angle_error;
     return true;
 }
 
 bool attitude_control_start(attitude_control_t *control, float target_yaw_deg) {
-    return start_control(control, target_yaw_deg, ATTITUDE_CONTROL_SLEW);
+    return start_control(control, target_yaw_deg, ATTITUDE_CONTROL_SLEW, true);
+}
+
+bool attitude_control_start_relative(attitude_control_t *control,
+                                     float target_yaw_deg) {
+    return start_control(control, target_yaw_deg, ATTITUDE_CONTROL_SLEW, false);
 }
 
 bool attitude_control_hold(attitude_control_t *control, float target_yaw_deg) {
-    return start_control(control, target_yaw_deg, ATTITUDE_CONTROL_HOLD);
+    return start_control(control, target_yaw_deg, ATTITUDE_CONTROL_HOLD, true);
 }
 
 void attitude_control_abort(attitude_control_t *control) {
@@ -130,7 +137,9 @@ void attitude_control_update(attitude_control_t *control,
 
     status->elapsed_ms += elapsed_increment_ms;
     status->body_rate_dps = body_rate_dps;
-    status->angle_error_deg = wrap_error_deg(status->target_yaw_deg - yaw_deg);
+    const float raw_angle_error_deg = status->target_yaw_deg - yaw_deg;
+    status->angle_error_deg = control->wrap_angle_error
+        ? wrap_error_deg(raw_angle_error_deg) : raw_angle_error_deg;
 
     /*
      * A constant restoring torque (suspension twist, bearing side-load, or

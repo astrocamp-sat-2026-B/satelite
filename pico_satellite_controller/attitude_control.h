@@ -59,12 +59,16 @@ typedef struct {
 typedef struct {
     attitude_control_config_t config;
     attitude_control_status_t status;
+    bool wrap_angle_error;
 } attitude_control_t;
 
 void attitude_control_default_config(attitude_control_config_t *config);
 void attitude_control_init(attitude_control_t *control,
                            const attitude_control_config_t *config);
 bool attitude_control_start(attitude_control_t *control, float target_yaw_deg);
+/* Starts a directed slew against the unwrapped integrated yaw angle. */
+bool attitude_control_start_relative(attitude_control_t *control,
+                                     float target_yaw_deg);
 /* Starts holding the supplied yaw. */
 bool attitude_control_hold(attitude_control_t *control, float target_yaw_deg);
 void attitude_control_abort(attitude_control_t *control);
