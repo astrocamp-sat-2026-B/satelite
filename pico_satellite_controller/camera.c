@@ -16,6 +16,8 @@ static uint offset;
 static int dma_chan;
 static bool hardware_ready;
 static bool sensor_ready;
+static bool test_pattern_known;
+static bool test_pattern_enabled;
 static uint8_t sensor_pid;
 static uint8_t sensor_ver;
 
@@ -34,6 +36,7 @@ static bool reg_read(uint8_t reg, uint8_t *value) {
 static camera_status_t sensor_init(void) {
     sensor_pid = 0;
     sensor_ver = 0;
+    test_pattern_known = false;
     if (!reg_read(0x0a, &sensor_pid) || !reg_read(0x0b, &sensor_ver)) {
         return CAMERA_ERROR_SCCB;
     }
@@ -85,6 +88,8 @@ static camera_status_t sensor_init(void) {
         }
     }
     sleep_ms(1500);
+    test_pattern_enabled = false;
+    test_pattern_known = true;
     return CAMERA_OK;
 }
 
@@ -123,10 +128,18 @@ camera_status_t camera_init(void) {
 
 camera_status_t camera_set_test_pattern(bool enabled) {
     if (!sensor_ready) return CAMERA_ERROR_NOT_INITIALIZED;
+    /* The normal stream repeatedly requests "false". Its register value was
+     * already installed during sensor_init(), so avoid a needless SCCB write
+     * and the former 300 ms settling delay for every frame. */
+    if (test_pattern_known && test_pattern_enabled == enabled) return CAMERA_OK;
     if (!reg_write(0x71, enabled ? 0xb5 : 0x35)) {
         sensor_ready = false;
+        test_pattern_known = false;
         return CAMERA_ERROR_REGISTER_WRITE;
     }
+    test_pattern_enabled = enabled;
+    test_pattern_known = true;
+    /* Only an actual pattern-mode switch needs the sensor to settle. */
     sleep_ms(300);
     return CAMERA_OK;
 }
