@@ -512,10 +512,17 @@ static void handle_ground_command(const char *line, void *context) {
     printf("PC -> Pico: %s\n", line);
 
     if (strncmp(line, "SLEW,", 5) == 0 ||
-        strncmp(line, "SLEW_REL,", 9) == 0) {
-        const bool relative = strncmp(line, "SLEW_REL,", 9) == 0;
+        strncmp(line, "SLEW_REL,", 9) == 0 ||
+        strncmp(line, "SLEW_REL_CAPTURE,", 17) == 0) {
+        /* The dashboard used SLEW_REL_CAPTURE before automatic post-slew
+         * capture was removed. Keep accepting it as a relative slew so an
+         * older dashboard still starts the reaction wheel. */
+        const bool legacy_relative =
+            strncmp(line, "SLEW_REL_CAPTURE,", 17) == 0;
+        const bool relative = legacy_relative ||
+            strncmp(line, "SLEW_REL,", 9) == 0;
         float angle;
-        const char *value = line + (relative ? 9 : 5);
+        const char *value = line + (legacy_relative ? 17 : (relative ? 9 : 5));
         if (!parse_single_float(value, &angle)) {
             send_text(client_pcb, "ERROR,INVALID_SLEW_ANGLE\n");
             return;
