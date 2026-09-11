@@ -20,6 +20,7 @@
 #include "servo.h"
 #include "camera.h"
 #include "attitude_control.h"
+#include "photodiode.h"
 #include "photoreflector.h"
 #include "wheel_sensor.h"
 #include "sun_capture.h"
@@ -50,20 +51,6 @@ static bool camera_streaming = false;
 static uint32_t camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
 static absolute_time_t next_stream_capture;
 
-static void trigger_sun_capture_if_needed(void) {
-    uint16_t photodiode_adc[4];
-    if (attitude_control_is_active(&attitude_control) || camera_streaming ||
-        capture_request != 0 || camera_transfer.active || !tcp_connected) {
-        return;
-    }
-
-    photodiode_read_all(photodiode_adc);
-    if (!sun_capture_update(photodiode_adc)) {
-        return;
-    }
-
-    capture_request = 1;
-}
 static attitude_control_t attitude_control;
 static wheel_sensor_t wheel_sensor;
 static absolute_time_t next_attitude_control_update;
@@ -86,6 +73,21 @@ static struct {
     size_t header_length;
     char header[96];
 } camera_transfer;
+
+static void trigger_sun_capture_if_needed(void) {
+    uint16_t photodiode_adc[PHOTODIODE_CHANNEL_COUNT];
+    if (attitude_control_is_active(&attitude_control) || camera_streaming ||
+        capture_request != 0 || camera_transfer.active || !tcp_connected) {
+        return;
+    }
+
+    photodiode_read_all(photodiode_adc);
+    if (!sun_capture_update(photodiode_adc)) {
+        return;
+    }
+
+    capture_request = 1;
+}
 
 static struct {
     char messages[TEXT_TX_QUEUE_CAPACITY][PROTOCOL_MAX_MESSAGE_LENGTH];
