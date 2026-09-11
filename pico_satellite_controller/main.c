@@ -22,6 +22,7 @@
 #include "attitude_control.h"
 #include "photoreflector.h"
 #include "wheel_sensor.h"
+#include "sun_capture.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -48,6 +49,21 @@ static volatile int capture_request = 0; /* 1=photo, 2=colour bars */
 static bool camera_streaming = false;
 static uint32_t camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
 static absolute_time_t next_stream_capture;
+
+static void trigger_sun_capture_if_needed(void) {
+    uint16_t photodiode_adc[4];
+    if (attitude_control_is_active(&attitude_control) || camera_streaming ||
+        capture_request != 0 || camera_transfer.active || !tcp_connected) {
+        return;
+    }
+
+    photodiode_read_all(photodiode_adc);
+    if (!sun_capture_update(photodiode_adc)) {
+        return;
+    }
+
+    capture_request = 1;
+}
 static attitude_control_t attitude_control;
 static wheel_sensor_t wheel_sensor;
 static absolute_time_t next_attitude_control_update;
@@ -542,6 +558,43 @@ static void handle_ground_command(const char *line, void *context) {
         return;
     }
 
+    if (strncmp(line, "SET_SUN_THRESHOLD,", 18) == 0) {
+        char extra;
+        unsigned int threshold;
+        if (sscanf(line + 18, "%u%c", &threshold, &extra) != 1 ||
+            threshold > SUN_CAPTURE_ADC_MAX) {
+            send_text(client_pcb, "ERROR,INVALID_SUN_THRESHOLD,0_TO_1023\n");
+            return;
+        }
+        sun_capture_set_threshold((uint16_t)threshold);
+        snprintf(reply, sizeof(reply), "ACK,SET_SUN_THRESHOLD,%u\n",
+                 sun_capture_get_threshold());
+        send_text(client_pcb, reply);
+        return;
+    }
+
+    if (strncmp(line, "SET_SUN_TOLERANCE,", 18) == 0) {
+        char extra;
+        unsigned int tolerance;
+        if (sscanf(line + 18, "%u%c", &tolerance, &extra) != 1 ||
+            tolerance > SUN_CAPTURE_ADC_MAX) {
+            send_text(client_pcb, "ERROR,INVALID_SUN_TOLERANCE,0_TO_1023\n");
+            return;
+        }
+        sun_capture_set_tolerance((uint16_t)tolerance);
+        snprintf(reply, sizeof(reply), "ACK,SET_SUN_TOLERANCE,%u\n",
+                 sun_capture_get_tolerance());
+        send_text(client_pcb, reply);
+        return;
+    }
+
+    if (strcmp(line, "GET_SUN_CONFIG") == 0) {
+        snprintf(reply, sizeof(reply), "SUN_CONFIG,threshold=%u,tolerance=%u\n",
+                 sun_capture_get_threshold(), sun_capture_get_tolerance());
+        send_text(client_pcb, reply);
+        return;
+    }
+
     const bool manual_speed_command = is_manual_speed_command(line);
     if (!command_handle_line(&command_state, line, reply, sizeof(reply))) {
         printf("command reply formatting failed\n");
@@ -742,6 +795,7 @@ int main(void) {
 
     protocol_receiver_init(&command_receiver);
     command_init(&command_state);
+    sun_capture_init();
     telemetry_init();
     servo_init();
     wheel_sensor_init(&wheel_sensor);
@@ -789,6 +843,7 @@ int main(void) {
             cyw43_arch_lwip_end();
         }
 
+        trigger_sun_capture_if_needed();
         process_capture_request();
 
         // PCサーバが起動していなければ、1秒ごとに接続を再試行
