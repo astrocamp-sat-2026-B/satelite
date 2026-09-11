@@ -9,6 +9,9 @@
 
 #define CAM_ADDR 0x21
 
+_Static_assert(CAMERA_FRAME_BYTES == 38400u,
+               "QQVGA RGB565 frame must be exactly 38,400 bytes");
+
 static uint32_t frame[CAMERA_FRAME_BYTES / sizeof(uint32_t)];
 static PIO const cam_pio = pio0;
 static uint sm;
@@ -48,19 +51,18 @@ static camera_status_t sensor_init(void) {
 
     const uint8_t settings[][2] = {
         {0x6b, 0x0a},
-        {0x12, 0x04}, // RGB, VGA source window; QVGA is produced by DCW below
+        {0x12, 0x04}, // RGB, VGA source window; QQVGA is produced by DCW below
         {0x8c, 0x00}, {0x40, 0xd0},
         {0x15, 0x00},
 
-        // OV7675 QVGA window/downsampling.  Setting COM7 to QVGA alone can
-        // leave the horizontal and vertical sampling ratios inconsistent,
-        // which makes a nominal 320x240 frame look stretched or squeezed.
+        // OV7675 QQVGA (160x120), matching the official Arduino OV767X
+        // driver's OV7675-specific centered window and divide-by-four DCW.
         {0x0c, 0x04}, // COM3: enable downsample/crop/window
-        {0x3e, 0x11}, // COM14: enable DCW and divide pixel clock by 2
-        {0x72, 0x22}, // downsample horizontal and vertical axes equally
-        {0x73, 0xf2}, // pixel-clock divider used by the QVGA DCW mode
-        {0x17, 0x15}, {0x18, 0x03}, {0x32, 0xc0}, // horizontal window
-        {0x19, 0x03}, {0x1a, 0x7b}, {0x03, 0xf0}, // vertical window
+        {0x3e, 0x1a}, // COM14: manual scaling, DCW/PCLK divide by 4
+        {0x72, 0x22}, // horizontal and vertical downsample by 4
+        {0x73, 0xf2}, // DSP scaling pixel-clock divide by 4
+        {0x17, 0x16}, {0x18, 0x04}, {0x32, 0xa4}, // horizontal window
+        {0x19, 0x22}, {0x1a, 0x7a}, {0x03, 0x0a}, // OV7675 vertical centre
 
         // Deterministic ISP tuning for clearer RGB565 output.  The sensor's
         // reset defaults otherwise vary noticeably between module revisions.

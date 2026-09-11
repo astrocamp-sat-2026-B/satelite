@@ -19,7 +19,6 @@
 #include "icm42688.h"
 #include "servo.h"
 #include "camera.h"
-#include "rle.h"
 #include "attitude_control.h"
 #include "photoreflector.h"
 #include "wheel_sensor.h"
@@ -35,7 +34,6 @@
 #define CAMERA_STREAM_MAX_INTERVAL_MS 10000
 #define ATTITUDE_CONTROL_INTERVAL_MS 20
 #define WHEEL_SENSOR_INTERVAL_MS 2
-#define CAMERA_JPEG_MCUS_PER_POLL 4u
 #define TEXT_TX_QUEUE_CAPACITY 16u
 
 static struct tcp_pcb *client_pcb = NULL;
@@ -50,8 +48,6 @@ static volatile int capture_request = 0; /* 1=photo, 2=colour bars */
 static bool camera_streaming = false;
 static uint32_t camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
 static absolute_time_t next_stream_capture;
-#define CAMERA_TRANSFER_CHUNK 4096u
-static uint8_t camera_transfer_chunk[CAMERA_TRANSFER_CHUNK];
 static attitude_control_t attitude_control;
 static wheel_sensor_t wheel_sensor;
 static absolute_time_t next_attitude_control_update;
@@ -60,10 +56,17 @@ static uint64_t last_attitude_control_update_us;
 static attitude_control_mode_t reported_control_mode = ATTITUDE_CONTROL_IDLE;
 static attitude_control_fault_t reported_control_fault =
     ATTITUDE_CONTROL_FAULT_NONE;
+typedef enum {
+    CAMERA_TRANSFER_IDLE,
+    CAMERA_TRANSFER_SEND_HEADER,
+    CAMERA_TRANSFER_SEND_RGB565,
+} camera_transfer_stage_t;
+
 static struct {
     bool active;
     bool stream_frame;
     camera_transfer_stage_t stage;
+    size_t source_position;
     size_t header_length;
     char header[96];
 } camera_transfer;
@@ -85,6 +88,17 @@ static void imu_worker(void) {
             next = get_absolute_time();
         }
     }
+}
+
+static uint32_t crc32(const uint8_t *data, size_t size) {
+    uint32_t crc = 0xffffffffu;
+    while (size--) {
+        crc ^= *data++;
+        for (int i = 0; i < 8; ++i) {
+            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+        }
+    }
+    return ~crc;
 }
 
 // 送信
@@ -116,7 +130,7 @@ static err_t queue_text(const char *text) {
 }
 
 /* Text ACKs, telemetry, and image bytes use one TCP connection. Queue text
- * while JPEG is active so no control line can be inserted inside its body. */
+ * while a raw frame is active so no control line can be inserted in its body. */
 static err_t send_text(struct tcp_pcb *pcb, const char *text) {
     if (camera_transfer.active) return queue_text(text);
     return send_text_now(pcb, text);
@@ -141,13 +155,14 @@ static void finish_camera_transfer(void) {
 static void fail_camera_transfer(const char *message) {
     camera_transfer.active = false;
     camera_transfer.stage = CAMERA_TRANSFER_IDLE;
-    printf("Camera JPEG transfer failed: %s", message);
+    printf("Camera RGB565 transfer failed: %s", message);
     send_text(client_pcb, message);
 }
 
-/* JPEG has an unambiguous EOI marker, so the ground station can frame it
- * without a pre-encoding pass to learn its length. This keeps the one raw
- * camera frame as the only full-image allocation and avoids encoding twice. */
+/* The 38,400-byte QQVGA frame is already in the final wire format. Queue as
+ * much as lwIP currently accepts and call tcp_output once per poll. COPY is
+ * intentional: the next capture may reuse the DMA frame after bytes are
+ * queued but before the peer acknowledges them. */
 static void pump_camera_transfer(struct tcp_pcb *pcb) {
     if (!camera_transfer.active || pcb == NULL) return;
 
@@ -159,36 +174,36 @@ static void pump_camera_transfer(struct tcp_pcb *pcb) {
                               TCP_WRITE_FLAG_COPY);
         if (err == ERR_MEM) return;
         if (err != ERR_OK) {
-            fail_camera_transfer("ERROR,CAMERA_JPEG_ENCODE\n");
+            fail_camera_transfer("ERROR,CAMERA_RGB565_HEADER\n");
             return;
         }
-        tcp_output(pcb);
-        camera_transfer.stage = CAMERA_TRANSFER_SEND_JPEG;
-        return;
+        camera_transfer.stage = CAMERA_TRANSFER_SEND_RGB565;
     }
 
-    if (camera_transfer.stage == CAMERA_TRANSFER_SEND_JPEG) {
-        size_t pending = jpeg_encoder_pending_size();
-        if (pending != 0) {
+    if (camera_transfer.stage == CAMERA_TRANSFER_SEND_RGB565) {
+        const uint8_t *frame = camera_get_frame();
+        const size_t frame_size = camera_get_frame_size();
+        bool queued_any = false;
+        while (camera_transfer.source_position < frame_size) {
             u16_t available = tcp_sndbuf(pcb);
-            if (available == 0) return;
-            size_t count = pending < available ? pending : available;
-            err_t err = tcp_write(pcb, jpeg_encoder_pending_data(), (u16_t)count,
-                                  TCP_WRITE_FLAG_COPY);
-            if (err == ERR_MEM) return;
+            if (available == 0) break;
+            size_t remaining = frame_size - camera_transfer.source_position;
+            size_t count = remaining < available ? remaining : available;
+            u8_t flags = TCP_WRITE_FLAG_COPY;
+            if (count < remaining) flags |= TCP_WRITE_FLAG_MORE;
+            err_t err = tcp_write(pcb,
+                                  frame + camera_transfer.source_position,
+                                  (u16_t)count, flags);
+            if (err == ERR_MEM) break;
             if (err != ERR_OK) {
-                fail_camera_transfer("ERROR,CAMERA_JPEG_TRANSFER\n");
+                fail_camera_transfer("ERROR,CAMERA_RGB565_TRANSFER\n");
                 return;
             }
-            jpeg_encoder_consume_pending(count);
-            tcp_output(pcb);
-            return;
+            camera_transfer.source_position += count;
+            queued_any = true;
         }
-
-        jpeg_encoder_status_t status = jpeg_encoder_send_step(CAMERA_JPEG_MCUS_PER_POLL);
-        if (status == JPEG_ENCODER_ERROR) {
-            fail_camera_transfer("ERROR,CAMERA_JPEG_ENCODE\n");
-        } else if (status == JPEG_ENCODER_DONE) {
+        if (queued_any || camera_transfer.source_position == 0) tcp_output(pcb);
+        if (camera_transfer.source_position == frame_size) {
             finish_camera_transfer();
         }
     }
@@ -231,24 +246,21 @@ static void process_capture_request(void) {
         return;
     }
 
-    if (!jpeg_encoder_begin_send(camera_get_frame(), CAMERA_WIDTH, CAMERA_HEIGHT)) {
-        cyw43_arch_lwip_begin();
-        send_text(client_pcb, "ERROR,CAMERA_JPEG_ENCODE\n");
-        cyw43_arch_lwip_end();
-        return;
-    }
     camera_transfer.stream_frame = stream_frame;
     camera_transfer.header_length = (size_t)snprintf(
         camera_transfer.header, sizeof(camera_transfer.header),
-        "%s,%u,%u,JPEG,0,00000000\n",
-        stream_frame ? "FRAME_STREAM" : "FRAME", CAMERA_WIDTH, CAMERA_HEIGHT);
+        "%s,%u,%u,RGB565,%u,%08lx\n",
+        stream_frame ? "FRAME_STREAM" : "FRAME", CAMERA_WIDTH, CAMERA_HEIGHT,
+        (unsigned int)camera_get_frame_size(),
+        (unsigned long)crc32(camera_get_frame(), camera_get_frame_size()));
     if (camera_transfer.header_length == 0 ||
         camera_transfer.header_length >= sizeof(camera_transfer.header)) {
         cyw43_arch_lwip_begin();
-        send_text(client_pcb, "ERROR,CAMERA_JPEG_HEADER\n");
+        send_text(client_pcb, "ERROR,CAMERA_RGB565_HEADER\n");
         cyw43_arch_lwip_end();
         return;
     }
+    camera_transfer.source_position = 0;
     camera_transfer.stage = CAMERA_TRANSFER_SEND_HEADER;
     camera_transfer.active = true;
 }

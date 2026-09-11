@@ -5,8 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CAMERA_WIDTH 320u
-#define CAMERA_HEIGHT 240u
+#define CAMERA_WIDTH 160u
+#define CAMERA_HEIGHT 120u
 #define CAMERA_BYTES_PER_PIXEL 2u
 #define CAMERA_FRAME_BYTES (CAMERA_WIDTH * CAMERA_HEIGHT * CAMERA_BYTES_PER_PIXEL)
 

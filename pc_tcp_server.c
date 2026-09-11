@@ -88,7 +88,7 @@ static const char DASHBOARD_HTML[] =
 "<style>.workspace{display:grid;grid-template-columns:minmax(500px,1fr) minmax(270px,.36fr) minmax(400px,.70fr);grid-template-rows:auto auto auto;gap:10px;margin-top:10px;align-items:start}.workspace>.metrics{grid-column:1;grid-row:1;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.workspace .card{min-width:0;padding:7px}.workspace .label{font-size:.64rem}.workspace .value{font-size:1.06rem;margin:3px 0 5px}.workspace .range{gap:9px;font-size:.62rem}.workspace .range b{font-size:.72rem}.camera-panel{grid-column:1;grid-row:2;justify-self:start;width:calc(50% - 5px);margin:0}.camera-content{display:grid;gap:8px;width:100%}.camera-image{display:block;width:100%;height:270px;object-fit:contain;background:#080e14;border-radius:7px}.camera-tools{width:100%;min-width:0;display:grid;gap:6px}.camera-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;width:100%}.camera-nav button{width:100%}.camera-link{padding:2px 5px;border-radius:4px;color:#bfe5ff;font-style:normal}.history-section{grid-column:2;grid-row:1 / span 3;align-self:stretch;min-height:620px;margin:0}.history-section .scroll{height:565px;max-height:calc(100vh - 230px)}.graph-stack{grid-column:3;grid-row:1 / span 3;display:grid;gap:6px;align-content:start;min-width:0}.graph-range{padding:8px}.graph-range .head{display:grid;gap:4px;align-items:start;margin:0!important}.graph-range .head>div{display:flex!important;width:100%;min-width:0}.graph-range input[type=range]{flex:1 1 0;min-width:0;width:auto!important}.graph-range .meta{white-space:nowrap}.graph-charts{display:grid;grid-template-columns:1fr;gap:6px;margin:0}.graph-charts .section{padding:8px}.board-section{grid-column:1;grid-row:2;justify-self:end;width:calc(50% - 5px);margin:0}.board-map{position:relative;max-width:180px;margin:auto;line-height:1}.board-map img{display:block;width:100%;height:auto;border-radius:8px}.sensor-dot{position:absolute;transform:translate(-50%,-50%);width:clamp(25px,3vw,34px);height:clamp(25px,3vw,34px);border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-line;line-height:1.08;font-size:clamp(7px,.85vw,9px);font-weight:750;color:#fff;text-shadow:0 1px 2px #000;box-shadow:0 0 0 2px #101820,0 0 14px rgba(255,55,55,.65);transition:background .35s,box-shadow .35s}.board-key{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:#9eb0c0;font-size:.72rem;margin:0 0 7px}.red-scale{width:80px;height:8px;border-radius:8px;background:linear-gradient(90deg,rgba(240,40,40,.2),rgba(240,40,40,1))}.sequence-section{grid-column:1;grid-row:3;margin:0}.sequence-rows{display:grid;gap:5px}.sequence-row{display:grid;grid-template-columns:74px minmax(0,1fr) 34px;gap:5px}.sequence-row input{min-width:0;width:100%;background:#182838;border:1px solid #38546d;color:#e8f0f7;border-radius:6px;padding:6px;font:inherit;font-size:.8rem}.sequence-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.command-marker{fill:rgba(255,202,92,.12);stroke:#ffd276;stroke-width:1.5;stroke-dasharray:4 3;cursor:help}.photoreflector{stroke:#ff8be8}@media(max-width:1180px){.workspace{grid-template-columns:minmax(430px,1fr) minmax(360px,.75fr)}.workspace>.metrics{grid-column:1;grid-row:1}.camera-panel{grid-column:1;grid-row:3}.board-section{grid-column:1;grid-row:3}.sequence-section{grid-column:1;grid-row:4}.history-section{grid-column:1;grid-row:2}.graph-stack{grid-column:2;grid-row:1 / span 4}}@media(max-width:900px){.workspace{grid-template-columns:1fr;grid-template-rows:auto}.workspace>.metrics,.camera-panel,.graph-stack,.history-section,.board-section,.sequence-section{grid-column:1;grid-row:auto;width:100%}.workspace>.metrics{grid-template-columns:repeat(auto-fit,minmax(122px,1fr))}.history-section{min-height:0}.history-section .scroll{height:240px;max-height:240px}.camera-image{height:260px}}</style>"
 "<style>.camera-image{height:220px}.camera-panel,.board-section{align-self:stretch}.history-section{min-height:590px}.history-section .scroll{height:535px}.sequence-section{align-self:start}.sequence-section>.head{cursor:pointer;user-select:none}.sequence-section>.head h2:after{content:'  ▸';color:#9eb0c0}.sequence-section.sequence-expanded>.head h2:after{content:'  ▾'}.sequence-section:not(.sequence-expanded)>:not(.head){display:none}.graph-charts{gap:4px}.graph-charts .section{padding:6px}.graph-charts .head{margin-bottom:3px}.gyroangle{stroke:#f2b35a}.sequence-burst{display:grid;grid-template-columns:auto minmax(80px,1fr) minmax(70px,1fr) auto;gap:6px;align-items:center;margin-top:9px;padding-top:8px;border-top:1px solid #293f53;font-size:.78rem}.sequence-burst input{min-width:0;width:100%;background:#182838;border:1px solid #38546d;color:#e8f0f7;border-radius:6px;padding:6px;font:inherit;font-size:.8rem}.sequence-burst label{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px;color:#9eb0c0}</style>"
 "<div class=\"status\"><span id=\"dot\" class=\"dot disconnected\"></span><span id=\"status\">Starting...</span></div><div class=\"workspace\"><section id=\"metrics\" class=\"metrics\"></section>"
-"<section class=\"section camera-panel\"><div class=\"head\"><h2>Camera gallery</h2><span id=\"camera-name\" class=\"meta\">No image received</span></div><div class=\"camera-content\"><img id=\"camera-image\" class=\"camera-image\" alt=\"OV7675 capture\" hidden><div class=\"camera-tools\"><span id=\"camera-count\" class=\"meta\">No saved images</span><div class=\"camera-nav\"><button id=\"camera-prev\" type=\"button\" title=\"Previous image (Left Arrow)\">&lt;</button><button id=\"camera-next\" type=\"button\" title=\"Next image (Right Arrow)\">&gt;</button><button id=\"camera-latest\" type=\"button\">Latest</button></div><span class=\"meta\">Colour JPEG frames are saved and displayed directly. Older RGB565/RLE captures remain supported. For CSV replay, load image files if they are not in this server's captures folder.</span></div></div></section>"
+"<section class=\"section camera-panel\"><div class=\"head\"><h2>Camera gallery</h2><span id=\"camera-name\" class=\"meta\">No image received</span></div><div class=\"camera-content\"><img id=\"camera-image\" class=\"camera-image\" alt=\"OV7675 capture\" hidden><div class=\"camera-tools\"><span id=\"camera-count\" class=\"meta\">No saved images</span><div class=\"camera-nav\"><button id=\"camera-prev\" type=\"button\" title=\"Previous image (Left Arrow)\">&lt;</button><button id=\"camera-next\" type=\"button\" title=\"Next image (Right Arrow)\">&gt;</button><button id=\"camera-latest\" type=\"button\">Latest</button></div><span class=\"meta\">Low-latency QQVGA RGB565 frames are received without compression and converted to BMP for display.</span></div></div></section>"
 "<aside class=\"graph-stack\"><section class=\"section graph-range\"><div class=\"head\" style=\"margin:0\"><h2>Graph range</h2><div style=\"display:flex;gap:9px;align-items:center;flex-wrap:wrap\"><input id=\"graph-window\" type=\"range\" min=\"0\" max=\"0\" value=\"0\" style=\"width:min(28vw,340px)\"><span id=\"graph-window-label\" class=\"meta\">Live: latest 60 seconds</span><button id=\"graph-latest\" type=\"button\">Latest</button></div></div></section>"
 "<section class=\"charts graph-charts\"><article class=\"section\"><div class=\"head\"><h2>Gyro Z</h2><span class=\"meta\">auto scale</span></div><svg id=\"gyro-chart\" class=\"chart\" viewBox=\"0 0 720 170\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Gyro angle</h2><span class=\"meta\">auto scale</span></div><svg id=\"gyro-angle-chart\" class=\"chart\" viewBox=\"0 0 720 170\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Photodiode ADC</h2><span class=\"meta\">auto scale</span></div><svg id=\"pd-chart\" class=\"chart\" viewBox=\"0 0 720 170\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Photoreflector</h2><span class=\"meta\">auto scale</span></div><svg id=\"photoreflector-chart\" class=\"chart\" viewBox=\"0 0 720 170\"></svg></article></section></aside>"
 "<section class=\"section history-section\"><div class=\"head\"><h2 id=\"history-title\">Command history</h2><div class=\"actions\"><span id=\"count\" class=\"meta\"></span><button id=\"history-mode\" type=\"button\">Show all history</button></div></div><div class=\"scroll\"><table><thead id=\"history-head\"><tr><th>Received</th><th>Direction / message</th></tr></thead><tbody id=\"rows\"></tbody></table></div></section>"
@@ -613,7 +613,7 @@ static bool save_rgb565_bmp(const uint8_t *frame, unsigned width, unsigned heigh
     SYSTEMTIME now;
     uint32_t row_size, pixel_bytes;
     uint8_t header[54] = {0};
-    const uint8_t padding[3] = {0};
+    uint8_t *pixels;
     FILE *file;
 
     if (!frame || width == 0 || height == 0 || width > CAMERA_MAX_WIDTH ||
@@ -625,6 +625,12 @@ static bool save_rgb565_bmp(const uint8_t *frame, unsigned width, unsigned heigh
 
     row_size = (width * 3u + 3u) & ~3u;
     pixel_bytes = row_size * height;
+    pixels = (uint8_t *)calloc(1, pixel_bytes);
+    if (!pixels) {
+        fclose(file);
+        DeleteFileA(filename);
+        return false;
+    }
     header[0] = 'B'; header[1] = 'M';
     put_le32(header + 2, 54u + pixel_bytes);
     put_le32(header + 10, 54u);
@@ -635,6 +641,7 @@ static bool save_rgb565_bmp(const uint8_t *frame, unsigned width, unsigned heigh
     put_le16(header + 28, 24u);
     put_le32(header + 34, pixel_bytes);
     if (fwrite(header, 1, sizeof(header), file) != sizeof(header)) {
+        free(pixels);
         fclose(file);
         DeleteFileA(filename);
         return false;
@@ -646,24 +653,22 @@ static bool save_rgb565_bmp(const uint8_t *frame, unsigned width, unsigned heigh
             size_t position = ((size_t)source_y * width + x) * 2u;
             /* PIO/DMA stores this camera's RGB565 bytes as low byte then high byte. */
             uint16_t pixel = ((uint16_t)frame[position + 1] << 8) | frame[position];
-            uint8_t bgr[3] = {
-                (uint8_t)(((pixel & 0x1fu) * 255u) / 31u),
-                (uint8_t)((((pixel >> 5) & 0x3fu) * 255u) / 63u),
-                (uint8_t)((((pixel >> 11) & 0x1fu) * 255u) / 31u),
-            };
-            if (fwrite(bgr, 1, sizeof(bgr), file) != sizeof(bgr)) {
-                fclose(file);
-                DeleteFileA(filename);
-                return false;
-            }
-        }
-        size_t padding_size = row_size - width * 3u;
-        if (padding_size && fwrite(padding, 1, padding_size, file) != padding_size) {
-            fclose(file);
-            DeleteFileA(filename);
-            return false;
+            size_t output_position = (size_t)output_y * row_size + x * 3u;
+            pixels[output_position] =
+                (uint8_t)(((pixel & 0x1fu) * 255u) / 31u);
+            pixels[output_position + 1u] =
+                (uint8_t)((((pixel >> 5) & 0x3fu) * 255u) / 63u);
+            pixels[output_position + 2u] =
+                (uint8_t)((((pixel >> 11) & 0x1fu) * 255u) / 31u);
         }
     }
+    if (fwrite(pixels, 1, pixel_bytes, file) != pixel_bytes) {
+        free(pixels);
+        fclose(file);
+        DeleteFileA(filename);
+        return false;
+    }
+    free(pixels);
     if (fclose(file) == 0) return true;
     DeleteFileA(filename);
     return false;
@@ -1113,7 +1118,7 @@ static void finish_camera_jpeg(FILE **file, const char *filename,
 static DWORD WINAPI receive_pico(LPVOID parameter) {
     SOCKET client = *(SOCKET *)parameter;
     uint8_t data[512];
-    char line[384];
+    char line[768];
     size_t line_length = 0;
     uint8_t *frame = NULL; /* decoded (raw RGB565) pixel buffer, while receiving */
     unsigned frame_width = 0;

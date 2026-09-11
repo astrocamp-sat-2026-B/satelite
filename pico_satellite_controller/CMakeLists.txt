@@ -47,10 +47,7 @@ add_executable(pico_satellite_controller
         photoreflector.c
         wheel_sensor.c
         servo.c
-        camera.c
-        rle.c
-        jpeg_encoder.c
-        third_party/JPEGENC/jpegenc.c)
+        camera.c)
 
 pico_generate_pio_header(pico_satellite_controller
         ${CMAKE_CURRENT_LIST_DIR}/camera_capture.pio)
