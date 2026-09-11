@@ -361,13 +361,15 @@ static void send_control_status(void) {
     format_centi_value(status->body_rate_dps, rate, sizeof(rate));
     format_centi_value(status->integral_rate_dps, integral_rate,
                        sizeof(integral_rate));
-    char reply[256];
+    char reply[320];
     snprintf(reply, sizeof(reply),
-             "SLEW_STATUS,%s,%s,target_deg=%s,error_deg=%s,rate_dps=%s,integral_rate_dps=%s,wheel_command=%ld\n",
+             "SLEW_STATUS,%s,%s,target_deg=%s,error_deg=%s,rate_dps=%s,integral_rate_dps=%s,wheel_command=%ld,breakaway=%s,stalled_ms=%lu\n",
              attitude_control_mode_name(status->mode),
              attitude_control_fault_name(status->fault), target, error, rate,
              integral_rate,
-             (long)status->servo_command_percent);
+             (long)status->servo_command_percent,
+             status->breakaway_active ? "ON" : "OFF",
+             (unsigned long)status->stalled_ms);
     send_text(client_pcb, reply);
 }
 
@@ -478,6 +480,32 @@ static void configure_hold(const char *arguments) {
     send_text(client_pcb, "ACK,HOLD_CONFIG\n");
 }
 
+static void configure_breakaway(const char *arguments) {
+    float minimum_accel;
+    float rate_threshold;
+    unsigned long delay_ms;
+    char extra;
+    if (attitude_control_is_active(&attitude_control)) {
+        send_text(client_pcb, "ERROR,SLEW_BUSY\n");
+        return;
+    }
+    if (sscanf(arguments, "%f,%f,%lu%c", &minimum_accel,
+               &rate_threshold, &delay_ms, &extra) != 3 ||
+        !isfinite(minimum_accel) || !isfinite(rate_threshold) ||
+        minimum_accel < 0.0f || minimum_accel > 30.0f ||
+        rate_threshold < 0.05f || rate_threshold > 2.0f ||
+        delay_ms > 2000u) {
+        send_text(client_pcb,
+                  "ERROR,BREAKAWAY_CONFIG,min_accel=0..30,rate_threshold=0.05..2,delay_ms=0..2000\n");
+        return;
+    }
+
+    attitude_control.config.breakaway_min_accel_dps2 = minimum_accel;
+    attitude_control.config.breakaway_rate_threshold_dps = rate_threshold;
+    attitude_control.config.breakaway_delay_ms = (uint32_t)delay_ms;
+    send_text(client_pcb, "ACK,BREAKAWAY_CONFIG\n");
+}
+
 static void configure_servo(const char *arguments) {
     unsigned int neutral_us;
     unsigned int deadband_us;
@@ -551,6 +579,11 @@ static void handle_ground_command(const char *line, void *context) {
 
     if (strncmp(line, "HOLD_CONFIG,", 12) == 0) {
         configure_hold(line + 12);
+        return;
+    }
+
+    if (strncmp(line, "BREAKAWAY_CONFIG,", 17) == 0) {
+        configure_breakaway(line + 17);
         return;
     }
 

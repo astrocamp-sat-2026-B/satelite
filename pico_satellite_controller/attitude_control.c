@@ -34,6 +34,8 @@ static void set_fault(attitude_control_t *control,
     control->status.fault = fault;
     control->status.wheel_command_percent = 0.0f;
     control->status.servo_command_percent = 0;
+    control->status.breakaway_active = false;
+    control->status.stalled_ms = 0u;
 }
 
 void attitude_control_default_config(attitude_control_config_t *config) {
@@ -44,11 +46,14 @@ void attitude_control_default_config(attitude_control_config_t *config) {
     config->integral_zone_deg = 12.0f;
     config->rate_gain_per_s = 1.50f;
     config->wheel_command_gain = 3.00f;
+    config->breakaway_min_accel_dps2 = 8.0f;
+    config->breakaway_rate_threshold_dps = 0.20f;
     config->max_body_rate_dps = 5.0f;
     config->max_wheel_command_percent = 70.0f;
     config->settle_angle_deg = 3.0f;
     config->settle_rate_dps = 0.8f;
     config->settle_time_ms = 1000u;
+    config->breakaway_delay_ms = 200u;
     config->slew_timeout_ms = 90000u;
     config->saturation_timeout_ms = 1500u;
 }
@@ -77,6 +82,8 @@ static bool start_control(attitude_control_t *control, float target_yaw_deg,
     control->status.body_rate_dps = 0.0f;
     control->status.wheel_command_percent = 0.0f;
     control->status.servo_command_percent = 0;
+    control->status.breakaway_active = false;
+    control->status.stalled_ms = 0u;
     control->status.elapsed_ms = 0u;
     control->status.settled_ms = 0u;
     control->status.saturated_ms = 0u;
@@ -97,6 +104,8 @@ void attitude_control_abort(attitude_control_t *control) {
     control->status.fault = ATTITUDE_CONTROL_FAULT_NONE;
     control->status.wheel_command_percent = 0.0f;
     control->status.servo_command_percent = 0;
+    control->status.breakaway_active = false;
+    control->status.stalled_ms = 0u;
 }
 
 void attitude_control_update(attitude_control_t *control,
@@ -155,8 +164,48 @@ void attitude_control_update(attitude_control_t *control,
      * must accelerate in the opposite direction, so integrate the negative
      * request into the wheel-speed command accepted by the FS90R.
      */
-    const float body_accel_request = config->rate_gain_per_s *
+    float body_accel_request = config->rate_gain_per_s *
         (status->target_rate_dps - body_rate_dps);
+
+    /*
+     * A small angle request can produce too little reaction-wheel
+     * acceleration to overcome bearing stiction or a gravity/twist restoring
+     * torque. After the body has remained nearly stationary outside the
+     * settle window, enforce a minimum acceleration toward the target. This
+     * changes the wheel-speed command slope (and therefore reaction torque),
+     * not merely its minimum steady speed. Drop the boost as soon as body
+     * motion is detected so the normal rate loop performs braking/settling.
+     */
+    const bool rotation_still_required =
+        fabsf(status->angle_error_deg) > config->settle_angle_deg;
+    const bool body_is_stationary =
+        fabsf(body_rate_dps) <= config->breakaway_rate_threshold_dps;
+    if (rotation_still_required && body_is_stationary &&
+        !missed_control_deadline &&
+        config->breakaway_min_accel_dps2 > 0.0f) {
+        if (status->stalled_ms < config->breakaway_delay_ms) {
+            const uint32_t remaining_ms =
+                config->breakaway_delay_ms - status->stalled_ms;
+            status->stalled_ms +=
+                dt_ms < remaining_ms ? dt_ms : remaining_ms;
+        }
+    } else {
+        status->stalled_ms = 0u;
+    }
+
+    status->breakaway_active =
+        rotation_still_required && body_is_stationary &&
+        config->breakaway_min_accel_dps2 > 0.0f &&
+        status->stalled_ms >= config->breakaway_delay_ms;
+    if (status->breakaway_active) {
+        const float direction =
+            status->angle_error_deg >= 0.0f ? 1.0f : -1.0f;
+        if (direction * body_accel_request <
+            config->breakaway_min_accel_dps2) {
+            body_accel_request =
+                direction * config->breakaway_min_accel_dps2;
+        }
+    }
     const float wheel_delta = -config->wheel_command_gain *
         body_accel_request * dt_s;
     const float requested_wheel_command =

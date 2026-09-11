@@ -7,6 +7,9 @@ const config = {
   integralZone: 12.0,
   rateGain: 1.50,
   wheelCommandGain: 3.00,
+  breakawayMinAccel: 8.0,
+  breakawayRateThreshold: 0.20,
+  breakawayDelay: 0.20,
   maxBodyRate: 5.0,
   maxWheelCommand: 70.0,
   settleAngle: 3.0,
@@ -42,6 +45,8 @@ function simulate({
   restoringStiffness = 0,
   equilibriumAngle = 0,
   holdDuration = 0,
+  staticFriction = 0,
+  breakawayEnabled = true,
 }) {
   const dt = 0.02;
   const servoTimeConstant = 0.30;
@@ -53,7 +58,9 @@ function simulate({
   let integralRate = 0;
   let settled = 0;
   let saturated = 0;
+  let stalled = 0;
   let holdStartedAt = null;
+  let firstMotionAt = null;
 
   for (let time = 0; time <= config.timeout; time += dt) {
     const error = wrapError(target - bodyAngle);
@@ -70,8 +77,24 @@ function simulate({
       -config.maxBodyRate,
       config.maxBodyRate,
     );
-    const bodyAccelerationRequest =
+    let bodyAccelerationRequest =
       config.rateGain * (rateReference - bodyRate);
+    const rotationStillRequired = Math.abs(error) > config.settleAngle;
+    const bodyIsStationary =
+      Math.abs(bodyRate) <= config.breakawayRateThreshold;
+    if (breakawayEnabled && rotationStillRequired && bodyIsStationary) {
+      stalled = Math.min(config.breakawayDelay, stalled + dt);
+    } else {
+      stalled = 0;
+    }
+    const breakawayActive = breakawayEnabled && rotationStillRequired &&
+      bodyIsStationary && stalled >= config.breakawayDelay;
+    if (breakawayActive) {
+      const direction = error >= 0 ? 1 : -1;
+      if (direction * bodyAccelerationRequest < config.breakawayMinAccel) {
+        bodyAccelerationRequest = direction * config.breakawayMinAccel;
+      }
+    }
     const wheelDelta =
       -config.wheelCommandGain * bodyAccelerationRequest * dt;
     const requestedWheelCommand = wheelCommand + wheelDelta;
@@ -86,11 +109,26 @@ function simulate({
       (wheelCommand / 100 * fullWheelSpeed - wheelSpeed) *
       dt / servoTimeConstant;
     const wheelAcceleration = (wheelSpeed - previousWheelSpeed) / dt;
-    const bodyAcceleration =
+    let bodyAcceleration =
       -inertiaRatio * wheelAcceleration - viscousDrag * bodyRate -
       restoringStiffness * wrapError(bodyAngle - equilibriumAngle);
+    if (staticFriction > 0) {
+      if (Math.abs(bodyRate) < 0.001 &&
+          Math.abs(bodyAcceleration) <= staticFriction) {
+        bodyAcceleration = 0;
+        bodyRate = 0;
+      } else {
+        const motionDirection = Math.abs(bodyRate) >= 0.001
+          ? Math.sign(bodyRate) : Math.sign(bodyAcceleration);
+        bodyAcceleration -= motionDirection * 0.75 * staticFriction;
+      }
+    }
     bodyRate += bodyAcceleration * dt;
     bodyAngle += bodyRate * dt;
+    if (firstMotionAt === null &&
+        (Math.abs(bodyAngle) > 0.01 || Math.abs(bodyRate) > 0.05)) {
+      firstMotionAt = time;
+    }
 
     if (Math.abs(error) <= config.settleAngle &&
         Math.abs(bodyRate) <= config.settleRate) {
@@ -101,7 +139,10 @@ function simulate({
     if (holdStartedAt === null && settled >= config.settleTime) {
       holdStartedAt = time;
       if (holdDuration === 0) {
-        return { result: "HOLD", time, bodyAngle, bodyRate, wheelCommand };
+        return {
+          result: "HOLD", time, bodyAngle, bodyRate, wheelCommand,
+          firstMotionAt,
+        };
       }
     }
     if (holdStartedAt !== null && time - holdStartedAt >= holdDuration) {
@@ -112,6 +153,7 @@ function simulate({
         bodyRate,
         wheelCommand,
         integralRate,
+        firstMotionAt,
       };
     }
 
@@ -120,10 +162,15 @@ function simulate({
       (requestedWheelCommand < -config.maxWheelCommand && wheelDelta < 0);
     saturated = pushingLimit ? saturated + dt : 0;
     if (saturated >= config.saturationTimeout) {
-      return { result: "SATURATION", time, bodyAngle, bodyRate, wheelCommand };
+      return {
+        result: "SATURATION", time, bodyAngle, bodyRate, wheelCommand,
+        firstMotionAt,
+      };
     }
   }
-  return { result: "TIMEOUT", bodyAngle, bodyRate, wheelCommand };
+  return {
+    result: "TIMEOUT", bodyAngle, bodyRate, wheelCommand, firstMotionAt,
+  };
 }
 
 let passed = 0;
@@ -163,6 +210,33 @@ assert.equal(tiltedSuspension.result, "HELD");
 assert.ok(Math.abs(wrapError(30 - tiltedSuspension.bodyAngle)) <= 1.0,
   JSON.stringify(tiltedSuspension));
 passed += 2;
+
+// A small slew must break static friction promptly. Without the boost the
+// ordinary PI/rate loop takes substantially longer to build enough wheel
+// acceleration for the same plant.
+const smallStictionSlew = simulate({
+  target: 4,
+  inertiaRatio: 0.03,
+  viscousDrag: 0.02,
+  staticFriction: 4.0,
+});
+const smallStictionSlewWithoutBoost = simulate({
+  target: 4,
+  inertiaRatio: 0.03,
+  viscousDrag: 0.02,
+  staticFriction: 4.0,
+  breakawayEnabled: false,
+});
+assert.notEqual(smallStictionSlew.firstMotionAt, null,
+  JSON.stringify(smallStictionSlew));
+assert.equal(smallStictionSlew.result, "HOLD",
+  JSON.stringify(smallStictionSlew));
+assert.ok(smallStictionSlew.firstMotionAt < 1.0,
+  JSON.stringify(smallStictionSlew));
+assert.ok(smallStictionSlewWithoutBoost.firstMotionAt === null ||
+  smallStictionSlewWithoutBoost.firstMotionAt > smallStictionSlew.firstMotionAt,
+  JSON.stringify({ smallStictionSlew, smallStictionSlewWithoutBoost }));
+passed += 4;
 
 assert.equal(wrapError(180), 180);
 assert.equal(wrapError(-180), -180);

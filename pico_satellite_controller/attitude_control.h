@@ -26,11 +26,14 @@ typedef struct {
     float integral_zone_deg;
     float rate_gain_per_s;
     float wheel_command_gain;
+    float breakaway_min_accel_dps2;
+    float breakaway_rate_threshold_dps;
     float max_body_rate_dps;
     float max_wheel_command_percent;
     float settle_angle_deg;
     float settle_rate_dps;
     uint32_t settle_time_ms;
+    uint32_t breakaway_delay_ms;
     uint32_t slew_timeout_ms;
     uint32_t saturation_timeout_ms;
 } attitude_control_config_t;
@@ -45,8 +48,10 @@ typedef struct {
     float body_rate_dps;
     float wheel_command_percent;
     int32_t servo_command_percent;
+    bool breakaway_active;
     uint32_t elapsed_ms;
     uint32_t settled_ms;
+    uint32_t stalled_ms;
     uint32_t saturated_ms;
 } attitude_control_status_t;
 
