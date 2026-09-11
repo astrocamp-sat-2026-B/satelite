@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 
 const config = {
   angleGain: 0.70,
+  angleIntegralGain: 0.10,
+  maxIntegralRate: 2.0,
+  integralZone: 12.0,
   rateGain: 1.50,
   wheelCommandGain: 3.00,
   maxBodyRate: 5.0,
@@ -32,7 +35,14 @@ function wrapError(error) {
  * This is deliberately a bounded family test, not a claim that these are
  * the measured parameters of the physical seminar hardware.
  */
-function simulate({ target, inertiaRatio, viscousDrag }) {
+function simulate({
+  target,
+  inertiaRatio,
+  viscousDrag,
+  restoringStiffness = 0,
+  equilibriumAngle = 0,
+  holdDuration = 0,
+}) {
   const dt = 0.02;
   const servoTimeConstant = 0.30;
   const fullWheelSpeed = 780.0;
@@ -40,13 +50,23 @@ function simulate({ target, inertiaRatio, viscousDrag }) {
   let bodyRate = 0;
   let wheelSpeed = 0;
   let wheelCommand = 0;
+  let integralRate = 0;
   let settled = 0;
   let saturated = 0;
+  let holdStartedAt = null;
 
   for (let time = 0; time <= config.timeout; time += dt) {
     const error = wrapError(target - bodyAngle);
+    if (Math.abs(error) <= config.integralZone &&
+        Math.abs(wheelCommand) < 0.90 * config.maxWheelCommand) {
+      integralRate = clamp(
+        integralRate + config.angleIntegralGain * error * dt,
+        -config.maxIntegralRate,
+        config.maxIntegralRate,
+      );
+    }
     const rateReference = clamp(
-      config.angleGain * error,
+      config.angleGain * error + integralRate,
       -config.maxBodyRate,
       config.maxBodyRate,
     );
@@ -67,7 +87,8 @@ function simulate({ target, inertiaRatio, viscousDrag }) {
       dt / servoTimeConstant;
     const wheelAcceleration = (wheelSpeed - previousWheelSpeed) / dt;
     const bodyAcceleration =
-      -inertiaRatio * wheelAcceleration - viscousDrag * bodyRate;
+      -inertiaRatio * wheelAcceleration - viscousDrag * bodyRate -
+      restoringStiffness * wrapError(bodyAngle - equilibriumAngle);
     bodyRate += bodyAcceleration * dt;
     bodyAngle += bodyRate * dt;
 
@@ -77,8 +98,21 @@ function simulate({ target, inertiaRatio, viscousDrag }) {
     } else {
       settled = 0;
     }
-    if (settled >= config.settleTime) {
-      return { result: "HOLD", time, bodyAngle, bodyRate, wheelCommand };
+    if (holdStartedAt === null && settled >= config.settleTime) {
+      holdStartedAt = time;
+      if (holdDuration === 0) {
+        return { result: "HOLD", time, bodyAngle, bodyRate, wheelCommand };
+      }
+    }
+    if (holdStartedAt !== null && time - holdStartedAt >= holdDuration) {
+      return {
+        result: "HELD",
+        time,
+        bodyAngle,
+        bodyRate,
+        wheelCommand,
+        integralRate,
+      };
     }
 
     const pushingLimit =
@@ -113,6 +147,22 @@ const weakActuator = simulate({
 });
 assert.equal(weakActuator.result, "SATURATION");
 passed += 1;
+
+// A repeatable return-to-zero torque must be rejected after target capture.
+// This verifies that HOLD keeps controlling and that its slow integral bias
+// learns the sustained wheel acceleration instead of stopping the servo.
+const tiltedSuspension = simulate({
+  target: 30,
+  inertiaRatio: 0.03,
+  viscousDrag: 0.02,
+  restoringStiffness: 0.002,
+  equilibriumAngle: 0,
+  holdDuration: 15,
+});
+assert.equal(tiltedSuspension.result, "HELD");
+assert.ok(Math.abs(wrapError(30 - tiltedSuspension.bodyAngle)) <= 1.0,
+  JSON.stringify(tiltedSuspension));
+passed += 2;
 
 assert.equal(wrapError(180), 180);
 assert.equal(wrapError(-180), -180);

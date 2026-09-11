@@ -18,6 +18,8 @@ typedef struct {
     float pitch_deg;
     float yaw_deg;
     float gyro_dps[3];
+    /* Angular rate about the gravity (suspension) axis. */
+    float vertical_rate_dps;
     float gyro_bias_dps[3];
     bool calibrated;
     bool valid;

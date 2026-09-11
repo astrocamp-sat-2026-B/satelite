@@ -40,6 +40,9 @@ static void set_fault(attitude_control_t *control,
 void attitude_control_default_config(attitude_control_config_t *config) {
     if (config == NULL) return;
     config->angle_gain_per_s = 0.70f;
+    config->angle_integral_gain_per_s2 = 0.10f;
+    config->max_integral_rate_dps = 2.0f;
+    config->integral_zone_deg = 12.0f;
     config->rate_gain_per_s = 1.50f;
     config->wheel_command_gain = 3.00f;
     config->max_body_rate_dps = 5.0f;
@@ -70,6 +73,7 @@ bool attitude_control_start(attitude_control_t *control, float target_yaw_deg) {
     control->status.target_yaw_deg = target_yaw_deg;
     control->status.angle_error_deg = 0.0f;
     control->status.target_rate_dps = 0.0f;
+    control->status.integral_rate_dps = 0.0f;
     control->status.body_rate_dps = 0.0f;
     control->status.wheel_command_percent = 0.0f;
     control->status.servo_command_percent = 0;
@@ -112,8 +116,32 @@ void attitude_control_update(attitude_control_t *control,
     status->elapsed_ms += elapsed_increment_ms;
     status->body_rate_dps = body_rate_dps;
     status->angle_error_deg = wrap_error_deg(status->target_yaw_deg - yaw_deg);
+
+    /*
+     * A constant restoring torque (suspension twist, bearing side-load, or
+     * contact) leaves a steady angle error with proportional control alone.
+     * Learn the small rate bias needed to keep accelerating the reaction
+     * wheel against that torque. Only learn close to the target and while
+     * momentum margin remains, otherwise a long slew or saturation would
+     * wind the integrator up.
+     */
+    const bool inside_integral_zone =
+        fabsf(status->angle_error_deg) <= config->integral_zone_deg;
+    const bool wheel_has_margin =
+        fabsf(status->wheel_command_percent) <
+            0.90f * config->max_wheel_command_percent;
+    if (inside_integral_zone && wheel_has_margin &&
+        !missed_control_deadline) {
+        status->integral_rate_dps = clampf(
+            status->integral_rate_dps +
+                config->angle_integral_gain_per_s2 *
+                status->angle_error_deg * dt_s,
+            -config->max_integral_rate_dps,
+            config->max_integral_rate_dps);
+    }
     status->target_rate_dps = clampf(
-        config->angle_gain_per_s * status->angle_error_deg,
+        config->angle_gain_per_s * status->angle_error_deg +
+            status->integral_rate_dps,
         -config->max_body_rate_dps,
         config->max_body_rate_dps);
 

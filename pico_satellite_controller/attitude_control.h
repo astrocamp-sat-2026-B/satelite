@@ -21,6 +21,9 @@ typedef enum {
 
 typedef struct {
     float angle_gain_per_s;
+    float angle_integral_gain_per_s2;
+    float max_integral_rate_dps;
+    float integral_zone_deg;
     float rate_gain_per_s;
     float wheel_command_gain;
     float max_body_rate_dps;
@@ -38,6 +41,7 @@ typedef struct {
     float target_yaw_deg;
     float angle_error_deg;
     float target_rate_dps;
+    float integral_rate_dps;
     float body_rate_dps;
     float wheel_command_percent;
     int32_t servo_command_percent;

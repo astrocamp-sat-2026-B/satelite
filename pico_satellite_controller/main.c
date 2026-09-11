@@ -351,14 +351,18 @@ static void send_control_status(void) {
     char target[24];
     char error[24];
     char rate[24];
+    char integral_rate[24];
     format_centi_value(status->target_yaw_deg, target, sizeof(target));
     format_centi_value(status->angle_error_deg, error, sizeof(error));
     format_centi_value(status->body_rate_dps, rate, sizeof(rate));
-    char reply[192];
+    format_centi_value(status->integral_rate_dps, integral_rate,
+                       sizeof(integral_rate));
+    char reply[256];
     snprintf(reply, sizeof(reply),
-             "SLEW_STATUS,%s,%s,target_deg=%s,error_deg=%s,rate_dps=%s,wheel_command=%ld,capture=%u\n",
+             "SLEW_STATUS,%s,%s,target_deg=%s,error_deg=%s,rate_dps=%s,integral_rate_dps=%s,wheel_command=%ld,capture=%u\n",
              attitude_control_mode_name(status->mode),
              attitude_control_fault_name(status->fault), target, error, rate,
+             integral_rate,
              (long)status->servo_command_percent,
              status->capture_issued ? 1u : 0u);
     send_text(client_pcb, reply);
@@ -445,6 +449,58 @@ static void configure_slew(const char *arguments) {
     send_text(client_pcb, "ACK,SLEW_CONFIG\n");
 }
 
+static void configure_hold(const char *arguments) {
+    float integral_gain;
+    float max_integral_rate;
+    float integral_zone;
+    char extra;
+    if (attitude_control_is_active(&attitude_control)) {
+        send_text(client_pcb, "ERROR,SLEW_BUSY\n");
+        return;
+    }
+    if (sscanf(arguments, "%f,%f,%f%c", &integral_gain,
+               &max_integral_rate, &integral_zone, &extra) != 3 ||
+        !isfinite(integral_gain) || !isfinite(max_integral_rate) ||
+        !isfinite(integral_zone) ||
+        integral_gain < 0.0f || integral_gain > 0.5f ||
+        max_integral_rate < 0.0f || max_integral_rate > 5.0f ||
+        integral_zone < 1.0f || integral_zone > 45.0f) {
+        send_text(client_pcb,
+                  "ERROR,HOLD_CONFIG,integral_gain=0..0.5,max_integral_rate=0..5,integral_zone=1..45\n");
+        return;
+    }
+
+    attitude_control.config.angle_integral_gain_per_s2 = integral_gain;
+    attitude_control.config.max_integral_rate_dps = max_integral_rate;
+    attitude_control.config.integral_zone_deg = integral_zone;
+    send_text(client_pcb, "ACK,HOLD_CONFIG\n");
+}
+
+static void configure_servo(const char *arguments) {
+    unsigned int neutral_us;
+    unsigned int deadband_us;
+    char extra;
+    if (attitude_control_is_active(&attitude_control)) {
+        send_text(client_pcb, "ERROR,SLEW_BUSY\n");
+        return;
+    }
+    if (command_get_value(&command_state) != 0) {
+        send_text(client_pcb, "ERROR,WHEEL_MANUAL_COMMAND_NOT_ZERO\n");
+        return;
+    }
+    if (sscanf(arguments, "%u,%u%c", &neutral_us, &deadband_us, &extra) != 2 ||
+        !servo_configure(neutral_us, deadband_us)) {
+        send_text(client_pcb,
+                  "ERROR,SERVO_CONFIG,neutral_us=1400..1600,deadband_us=0..200\n");
+        return;
+    }
+    char reply[72];
+    snprintf(reply, sizeof(reply), "ACK,SERVO_CONFIG,%lu,%lu\n",
+             (unsigned long)servo_get_neutral_pulse_us(),
+             (unsigned long)servo_get_deadband_us());
+    send_text(client_pcb, reply);
+}
+
 // 送信応答
 /* This is the boundary between received TCP bytes and application commands. */
 static void handle_ground_command(const char *line, void *context) {
@@ -481,6 +537,25 @@ static void handle_ground_command(const char *line, void *context) {
 
     if (strncmp(line, "SLEW_CONFIG,", 12) == 0) {
         configure_slew(line + 12);
+        return;
+    }
+
+    if (strncmp(line, "HOLD_CONFIG,", 12) == 0) {
+        configure_hold(line + 12);
+        return;
+    }
+
+    if (strncmp(line, "SERVO_CONFIG,", 13) == 0) {
+        configure_servo(line + 13);
+        return;
+    }
+
+    if (strcmp(line, "SERVO_STATUS") == 0) {
+        char status[64];
+        snprintf(status, sizeof(status), "SERVO_STATUS,neutral_us=%lu,deadband_us=%lu\n",
+                 (unsigned long)servo_get_neutral_pulse_us(),
+                 (unsigned long)servo_get_deadband_us());
+        send_text(client_pcb, status);
         return;
     }
 
@@ -588,7 +663,7 @@ static void update_attitude_control(void) {
     const bool valid = icm42688_get_attitude(&attitude) && attitude.calibrated;
     attitude_control_update(&attitude_control, valid,
                             valid ? attitude.yaw_deg : 0.0f,
-                            valid ? attitude.gyro_dps[2] : 0.0f,
+                            valid ? attitude.vertical_rate_dps : 0.0f,
                             dt_ms);
     const attitude_control_status_t *status =
         attitude_control_get_status(&attitude_control);
@@ -697,7 +772,6 @@ static err_t on_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
 
     client_pcb = pcb;
     tcp_connected = true;
-    tcp_nagle_disable(pcb);
     camera_streaming = true;
     camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
     next_stream_capture = get_absolute_time();

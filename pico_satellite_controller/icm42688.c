@@ -318,27 +318,41 @@ bool icm42688_update(void) {
     }
 
     quaternion_update(corrected_gyro, estimator.filtered_accel, dt_s);
-    double yaw;
-    if (acquisition_gap) {
-        angle_integrator_discontinuity(&estimator.yaw_integrator,
-                                      sample.timestamp_us,
-                                      corrected_gyro[2]);
-        yaw = angle_integrator_value(&estimator.yaw_integrator);
-    } else {
-        yaw = angle_integrator_update(&estimator.yaw_integrator,
-                                      sample.timestamp_us,
-                                      corrected_gyro[2]);
-    }
+    /*
+     * The suspended spacecraft rotates about the world vertical, not
+     * necessarily the IMU Z axis.  Project the measured angular-rate vector
+     * onto the gravity axis estimated by the attitude quaternion.  This
+     * removes the cos(tilt) scale error and roll/pitch-rate cross coupling
+     * that occur when the frame is not level.
+     */
     const float q0 = estimator.quaternion[0];
     const float q1 = estimator.quaternion[1];
     const float q2 = estimator.quaternion[2];
     const float q3 = estimator.quaternion[3];
+    const float vertical_x = 2.0f * (q1 * q3 - q0 * q2);
+    const float vertical_y = 2.0f * (q0 * q1 + q2 * q3);
+    const float vertical_z = q0*q0 - q1*q1 - q2*q2 + q3*q3;
+    const float vertical_rate_dps = corrected_gyro[0] * vertical_x +
+                                    corrected_gyro[1] * vertical_y +
+                                    corrected_gyro[2] * vertical_z;
+    double yaw;
+    if (acquisition_gap) {
+        angle_integrator_discontinuity(&estimator.yaw_integrator,
+                                      sample.timestamp_us,
+                                      vertical_rate_dps);
+        yaw = angle_integrator_value(&estimator.yaw_integrator);
+    } else {
+        yaw = angle_integrator_update(&estimator.yaw_integrator,
+                                      sample.timestamp_us,
+                                      vertical_rate_dps);
+    }
     const float sin_pitch = 2.0f * (q0 * q2 - q3 * q1);
     estimator.output.roll_deg = atan2f(2.0f * (q0*q1 + q2*q3),
         1.0f - 2.0f * (q1*q1 + q2*q2)) * RAD_TO_DEG;
     estimator.output.pitch_deg = asinf(fmaxf(-1.0f, fminf(1.0f, sin_pitch))) *
                                  RAD_TO_DEG;
     estimator.output.yaw_deg = (float)yaw;
+    estimator.output.vertical_rate_dps = vertical_rate_dps;
     for (size_t axis = 0; axis < 3; ++axis) {
         estimator.output.gyro_dps[axis] = corrected_gyro[axis];
         estimator.output.gyro_bias_dps[axis] = estimator.gyro_bias[axis];
