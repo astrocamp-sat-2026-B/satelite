@@ -5,6 +5,7 @@
 
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
+#include "pico/multicore.h"
 
 #include "lwip/ip_addr.h"
 #include "lwip/pbuf.h"
@@ -49,6 +50,19 @@ static struct {
     size_t header_length;
     char header[96];
 } camera_transfer;
+
+static void imu_worker(void) {
+    absolute_time_t next = get_absolute_time();
+    while (true) {
+        next = delayed_by_us(next, ICM42688_SAMPLE_PERIOD_US);
+        sleep_until(next);
+        icm42688_update();
+        if (absolute_time_diff_us(next, get_absolute_time()) >
+            (int64_t)ICM42688_SAMPLE_PERIOD_US) {
+            next = get_absolute_time();
+        }
+    }
+}
 
 static uint32_t crc32(const uint8_t *data, size_t size) {
     uint32_t crc = 0xffffffffu;
@@ -227,6 +241,12 @@ static void handle_ground_command(const char *line, void *context) {
 
     printf("PC -> Pico: %s\n", line);
 
+    if (strcmp(line, "ANGLE_RESET") == 0) {
+        icm42688_gyro_z_angle_reset();
+        send_text(client_pcb, "ACK,ANGLE_RESET\n");
+        return;
+    }
+
     if (strcmp(line, "STREAM_START") == 0 ||
         strncmp(line, "STREAM_START,", 13) == 0) {
         uint32_t interval = CAMERA_STREAM_INTERVAL_MS;
@@ -395,6 +415,7 @@ int main(void) {
         printf("ICM-42688 initialization failed\n");
         return 1;
     }
+    multicore_launch_core1(imu_worker);
 
     if (cyw43_arch_init()) {
         printf("Wi-Fi initialization failed\n");

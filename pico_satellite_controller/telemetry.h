@@ -14,6 +14,11 @@ typedef struct {
     bool gyro_z_valid;
     int32_t gyro_z_angle_centi_deg;
     bool gyro_z_angle_valid;
+    int32_t roll_centi_deg;
+    int32_t pitch_centi_deg;
+    bool attitude_calibrated;
+    uint32_t imu_sample_count;
+    uint32_t imu_rejected_samples;
     uint16_t photodiode_adc[4];
     uint16_t photoreflector_adc;
     bool photoreflector_valid;
