@@ -87,3 +87,36 @@ float icm42688_gyro_z_dps(void) {
     return gyro_z / 16.4f; // ±2000 dps時の感度で dps へ換算
 }
 
+// ===== Z軸角度算出用の状態 =====
+static float gyro_z_angle_deg = 0.0f;
+static absolute_time_t gyro_z_angle_last_time;
+static bool gyro_z_angle_initialized = false;
+
+// ===== Z軸角速度を積分して角度を算出する関数 =====
+// icm42688_gyro_z_dps() で得た角速度を前回呼び出しからの経過時間で積分し、
+// 起動（または icm42688_gyro_z_angle_reset）からの累積角度を度で返す。
+// I2C読み取りに失敗した場合は積分を行わず NAN を返す。
+float icm42688_gyro_z_angle_deg(void) {
+    const float gyro_z = icm42688_gyro_z_dps();
+    if (isnan(gyro_z)) return NAN;
+
+    const absolute_time_t now = get_absolute_time();
+    if (!gyro_z_angle_initialized) {
+        gyro_z_angle_last_time = now;
+        gyro_z_angle_initialized = true;
+        return gyro_z_angle_deg;
+    }
+
+    const float dt_s = (float)absolute_time_diff_us(gyro_z_angle_last_time, now) / 1000000.0f;
+    gyro_z_angle_last_time = now;
+    gyro_z_angle_deg += gyro_z * dt_s;
+
+    return gyro_z_angle_deg;
+}
+
+// ===== 累積角度をリセットする関数 =====
+void icm42688_gyro_z_angle_reset(void) {
+    gyro_z_angle_deg = 0.0f;
+    gyro_z_angle_initialized = false;
+}
+

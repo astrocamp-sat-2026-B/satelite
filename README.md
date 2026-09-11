@@ -181,8 +181,17 @@ PC -> Pico: hello
 | `-100` ～ `100` | 連続回転サーボの速度を指定する（負数は逆転、0は停止）。 |
 | `SET_VALUE,-100` ～ `SET_VALUE,100` | 上記と同じ。 |
 | `GET_VALUE` | 現在のサーボ速度を取得する。 |
-| `CAPTURE` | OV7675で通常画像を1枚撮影し、Windowsへ送る。 |
-| `CAPTURE_TEST` | カラーバーを有効にして1枚撮影し、Windowsへ送る。 |
+| `CAPTURE` | OV7675で通常画像を1枚撮影し、Windowsへ送る（動画停止中のみ）。 |
+| `CAPTURE_TEST` | カラーバーを有効にして1枚撮影し、Windowsへ送る（動画停止中のみ）。 |
+| `STREAM_START` | 0.5秒間隔で連続撮影を開始する。 |
+| `STREAM_START,500` | 指定した間隔（250～10000 ms）で連続撮影を開始する。 |
+| `STREAM_STOP` | 連続撮影を停止する。 |
+
+PCとの接続直後は、通常画像の連続撮影が0.5秒間隔で自動的に始まります。
+`http://localhost:8080` を開くと、受信した最新画像が4:3の比率を保ったまま
+自動更新され、動画のように確認できます。連続撮影中の画像は
+`camera_live.bmp`へ上書きするため、画像ファイルが無制限に増えません。
+通常の`CAPTURE`で撮影した静止画は、従来どおり日時付きのファイルへ保存します。
 
 最初の撮影時にカメラを自動初期化します。Windows側は受信データのCRC32を
 検証し、成功するとサーバーを起動したフォルダーへ次の名前で保存します。
@@ -217,6 +226,13 @@ FRAME,320,240,RGB565,153600,1234abcd\n
 <153600 bytes RGB565>
 ```
 
+連続撮影中は、各画像を次のヘッダーで送ります。
+
+```text
+FRAME_STREAM,320,240,RGB565,153600,1234abcd\n
+<153600 bytes RGB565>
+```
+
 末尾の値は8桁16進のCRC32です。TCPの受信境界には依存せず、Windows側は
 ヘッダーのサイズに従って画像データを復元します。
 
@@ -225,7 +241,7 @@ FRAME,320,240,RGB565,153600,1234abcd\n
 Picoは接続中、2秒ごとに次の形式でテレメトリを送ります。
 
 ```text
-Telemetry <- Pico: wifi_mode=AP,uptime_s=12,temp_c=26.45,random=381,command_value=50,gyro_z_dps=1.25,photodiode_adc=123|234|345|456,photoreflector_adc=512
+Telemetry <- Pico: wifi_mode=AP,uptime_s=12,temp_c=26.45,random=381,command_value=50,gyro_z_dps=1.25,gyro_z_angle_deg=45.30,photodiode_adc=123|234|345|456,photoreflector_adc=512
 ```
 
 | 項目 | 内容 |

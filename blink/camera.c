@@ -39,16 +39,36 @@ static camera_status_t sensor_init(void) {
     if (sensor_pid != 0x76 || sensor_ver != 0x73) return CAMERA_ERROR_SENSOR_ID;
     if (!reg_write(0x12, 0x80)) return CAMERA_ERROR_REGISTER_WRITE;
     sleep_ms(100);
-    // Use documented OV7675 controls; retain factory ISP defaults.
-    // Do not apply OV7670 reserved-register/scaling tables to this sensor.
+    // Use documented OV7675 controls and the OV7675-specific QVGA window.
     const uint8_t settings[][2] = {
         {0x6b, 0x0a}, // PLL bypass, retain low reserved bits
-        {0x12, 0x14}, // QVGA + RGB
+        {0x12, 0x04}, // RGB, VGA source window; QVGA is produced by DCW below
         {0x8c, 0x00}, // RGB444 off
         {0x40, 0xd0}, // full-range RGB565
         {0x15, 0x00}, // positive HREF/VSYNC, free-running PCLK
-        {0x0c, 0x00}, // no byte swap
-        {0x13, 0xcf}, // fast AEC, AGC, AWB; banding off for initial bring-up
+        {0x0c, 0x04}, // enable downsample/crop/window; no byte swap
+        {0x3e, 0x11}, // enable DCW and divide pixel clock by 2
+        {0x72, 0x22}, // downsample both axes equally (preserves aspect ratio)
+        {0x73, 0xf2}, // QVGA DCW pixel-clock divider
+        {0x17, 0x15}, {0x18, 0x03}, {0x32, 0xc0}, // horizontal window
+        {0x19, 0x03}, {0x1a, 0x7b}, {0x03, 0xf0}, // vertical window
+        // Stable ISP tuning for clearer detail, colour, and tonal gradation.
+        {0x13, 0xcf}, // fast AEC plus automatic exposure/gain/white balance
+        {0x41, 0x08}, // enable automatic white-balance gain
+        {0x43, 0x14}, {0x44, 0xf0}, {0x45, 0x34},
+        {0x46, 0x58}, {0x47, 0x28}, {0x48, 0x3a}, // AWB calibration
+        {0x4f, 0xb3}, {0x50, 0xb3}, {0x51, 0x00},
+        {0x52, 0x3d}, {0x53, 0xa7}, {0x54, 0xe4}, // RGB colour matrix
+        {0x3d, 0xc0}, // gamma and automatic colour saturation
+        {0x3f, 0x04}, // light edge enhancement without oversharpening
+        {0x62, 0x00}, {0x63, 0x00}, {0x64, 0x04},
+        {0x65, 0x20}, {0x66, 0x05}, {0x94, 0x04},
+        {0x95, 0x08}, // lens shading correction
+        // Smooth 16-step gamma curve: preserves shadow and highlight detail.
+        {0x7a, 0x20}, {0x7b, 0x1c}, {0x7c, 0x28}, {0x7d, 0x3c},
+        {0x7e, 0x55}, {0x7f, 0x68}, {0x80, 0x76}, {0x81, 0x80},
+        {0x82, 0x88}, {0x83, 0x8f}, {0x84, 0x96}, {0x85, 0xa3},
+        {0x86, 0xaf}, {0x87, 0xc4}, {0x88, 0xd7}, {0x89, 0xe8},
         {0x70, 0x3a}, {0x71, 0x35}, // sensor test pattern off
         {0x11, 0x83}, // retain CLKRC bit7; divide clock by 4
     };

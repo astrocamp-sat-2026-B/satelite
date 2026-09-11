@@ -23,6 +23,9 @@
 #define TCP_PORT      4242
 #define TELEMETRY_INTERVAL_MS 500
 #define TELEMETRY_LED_ON_MS    200
+#define CAMERA_STREAM_INTERVAL_MS 500
+#define CAMERA_STREAM_MIN_INTERVAL_MS 250
+#define CAMERA_STREAM_MAX_INTERVAL_MS 10000
 
 static struct tcp_pcb *client_pcb = NULL;
 static volatile bool tcp_connected = false;
@@ -33,6 +36,9 @@ static protocol_receiver_t command_receiver;
 static command_state_t command_state;
 static bool camera_initialized = false;
 static volatile int capture_request = 0; /* 1=photo, 2=colour bars */
+static bool camera_streaming = false;
+static uint32_t camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
+static absolute_time_t next_stream_capture;
 static struct {
     bool active;
     bool header_queued;
@@ -97,6 +103,10 @@ static void pump_camera_transfer(struct tcp_pcb *pcb) {
         camera_transfer.offset += chunk;
         if (camera_transfer.offset == camera_get_frame_size()) {
             camera_transfer.active = false;
+            if (camera_streaming) {
+                next_stream_capture =
+                    make_timeout_time_ms(camera_stream_interval_ms);
+            }
             printf("Camera frame queued for PC\n");
         }
     }
@@ -105,7 +115,14 @@ static void pump_camera_transfer(struct tcp_pcb *pcb) {
 
 static void process_capture_request(void) {
     int request = capture_request;
-    if (request == 0 || !tcp_connected || camera_transfer.active) return;
+    bool stream_frame = false;
+    if (!tcp_connected || camera_transfer.active) return;
+    if (request == 0 && camera_streaming &&
+        absolute_time_diff_us(get_absolute_time(), next_stream_capture) <= 0) {
+        request = 1;
+        stream_frame = true;
+    }
+    if (request == 0) return;
     capture_request = 0;
 
     camera_status_t status = CAMERA_OK;
@@ -125,13 +142,15 @@ static void process_capture_request(void) {
         cyw43_arch_lwip_begin();
         send_text(client_pcb, error);
         cyw43_arch_lwip_end();
+        camera_streaming = false;
         return;
     }
 
     const uint8_t *frame = camera_get_frame();
     camera_transfer.header_length = (size_t)snprintf(
         camera_transfer.header, sizeof(camera_transfer.header),
-        "FRAME,%u,%u,RGB565,%u,%08lx\n",
+        "%s,%u,%u,RGB565,%u,%08lx\n",
+        stream_frame ? "FRAME_STREAM" : "FRAME",
         CAMERA_WIDTH, CAMERA_HEIGHT, (unsigned int)camera_get_frame_size(),
         (unsigned long)crc32(frame, camera_get_frame_size()));
     camera_transfer.header_queued = false;
@@ -181,8 +200,41 @@ static void handle_ground_command(const char *line, void *context) {
 
     printf("PC -> Pico: %s\n", line);
 
+    if (strcmp(line, "STREAM_START") == 0 ||
+        strncmp(line, "STREAM_START,", 13) == 0) {
+        uint32_t interval = CAMERA_STREAM_INTERVAL_MS;
+        if (line[12] == ',') {
+            char extra;
+            unsigned int parsed;
+            if (sscanf(line + 13, "%u%c", &parsed, &extra) != 1 ||
+                parsed < CAMERA_STREAM_MIN_INTERVAL_MS ||
+                parsed > CAMERA_STREAM_MAX_INTERVAL_MS) {
+                send_text(client_pcb,
+                          "ERROR,STREAM_INTERVAL,250_TO_10000_MS\n");
+                return;
+            }
+            interval = parsed;
+        }
+        camera_stream_interval_ms = interval;
+        camera_streaming = true;
+        next_stream_capture = get_absolute_time();
+        char ack[48];
+        snprintf(ack, sizeof(ack), "ACK,STREAM_START,%lu\n",
+                 (unsigned long)interval);
+        send_text(client_pcb, ack);
+        return;
+    }
+
+    if (strcmp(line, "STREAM_STOP") == 0) {
+        camera_streaming = false;
+        capture_request = 0;
+        send_text(client_pcb, "ACK,STREAM_STOP\n");
+        return;
+    }
+
     if (strcmp(line, "CAPTURE") == 0 || strcmp(line, "CAPTURE_TEST") == 0) {
-        if (capture_request != 0 || camera_transfer.active) {
+        if (camera_streaming || capture_request != 0 ||
+            camera_transfer.active) {
             send_text(client_pcb, "ERROR,CAMERA_BUSY\n");
         } else {
             capture_request = strcmp(line, "CAPTURE_TEST") == 0 ? 2 : 1;
@@ -216,6 +268,7 @@ static void on_tcp_error(void *arg, err_t err) {
     tcp_connected = false;
     tcp_connecting = false;
     capture_request = 0;
+    camera_streaming = false;
     camera_transfer.active = false;
 }
 
@@ -236,6 +289,7 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
         tcp_connected = false;
         tcp_connecting = false;
         capture_request = 0;
+        camera_streaming = false;
         camera_transfer.active = false;
         return tcp_close(pcb);
     }
@@ -263,6 +317,9 @@ static err_t on_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
 
     client_pcb = pcb;
     tcp_connected = true;
+    camera_streaming = true;
+    camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
+    next_stream_capture = get_absolute_time();
     tcp_recv(pcb, on_receive);
 
     printf("Connected to PC server\n");
@@ -332,6 +389,8 @@ int main(void) {
     absolute_time_t next_telemetry = make_timeout_time_ms(TELEMETRY_INTERVAL_MS);
 
     while (true) {
+        servo_update();
+
         // poll方式のWi-Fi/lwIP処理を進める。
         cyw43_arch_poll();
 

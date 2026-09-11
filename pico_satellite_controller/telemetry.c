@@ -1,5 +1,7 @@
 #include "telemetry.h"
 
+#include <math.h>
+
 #include "pico/rand.h"
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
@@ -31,6 +33,12 @@ void telemetry_collect(telemetry_data_t *telemetry, int32_t command_value) {
     telemetry->command_value = command_value;
     telemetry->gyro_z_valid =
         icm42688_read_gyro_z_centi_dps(&telemetry->gyro_z_centi_dps);
+
+    const float gyro_z_angle_deg = icm42688_gyro_z_angle_deg();
+    telemetry->gyro_z_angle_valid = !isnan(gyro_z_angle_deg);
+    telemetry->gyro_z_angle_centi_deg =
+        telemetry->gyro_z_angle_valid ? (int32_t)(gyro_z_angle_deg * 100.0f) : 0;
+
     photodiode_read_all(telemetry->photodiode_adc);
     telemetry->photoreflector_adc = photoreflector_read_raw();
     telemetry->photoreflector_valid =
