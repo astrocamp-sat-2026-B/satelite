@@ -1117,7 +1117,7 @@ static void finish_camera_jpeg(FILE **file, const char *filename,
 
 static DWORD WINAPI receive_pico(LPVOID parameter) {
     SOCKET client = *(SOCKET *)parameter;
-    uint8_t data[512];
+    uint8_t data[8192];
     char line[768];
     size_t line_length = 0;
     uint8_t *frame = NULL; /* decoded (raw RGB565) pixel buffer, while receiving */

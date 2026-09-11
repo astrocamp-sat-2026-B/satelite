@@ -80,7 +80,9 @@ CRC32計算は38,400 byteを1回走査する。これを省けば数ms程度短�
 
 - `camera.h`のコンパイル時フレームサイズは38,400 byte。
 - Pico側変更ファイルはARM GCCの`-Wall -Wextra -Werror`構文検査を通過。
+- CMake/Ninjaのリンクが完了し、QQVGA RAW版UF2を生成済み。
 - PC側はMSVCの`/W4 /WX /Zs`構文検査を通過。
+- PC TCPサーバー実行ファイルをMSVCで再ビルド済み。
 - 実機の色、向き、フレーム欠落、総遅延は未測定。最初はカラーバーで確認し、その後通常画像で確認する。
 
 ## Sources

@@ -697,6 +697,7 @@ static err_t on_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
 
     client_pcb = pcb;
     tcp_connected = true;
+    tcp_nagle_disable(pcb);
     camera_streaming = true;
     camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
     next_stream_capture = get_absolute_time();
