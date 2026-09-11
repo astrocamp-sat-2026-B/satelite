@@ -997,7 +997,8 @@ static void dummy_command(const char *command) {
     } else if (strncmp(command, "SET_VALUE,", 10) == 0) {
         char *end;
         long value = strtol(command + 10, &end, 10);
-        if (*end == '\n' || *end == '\r' || *end == '\0') {
+        if ((*end == '\n' || *end == '\r' || *end == '\0') &&
+            value >= -100 && value <= 100) {
             InterlockedExchange(&dummy_command_value, value);
             snprintf(reply, sizeof(reply), "ACK,SET_VALUE,%ld", value);
         } else snprintf(reply, sizeof(reply), "ERROR,INVALID_VALUE");

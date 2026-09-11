@@ -9,7 +9,8 @@ void servo_init(void);
 
 /*
  * Calibrates an individual FS90R. neutral_pulse_us is the measured pulse
- * that stops the wheel. deadband_us is the full no-motion pulse-width band.
+ * that stops the wheel. deadband_us records the measured full no-motion
+ * band for status/tuning; speed-to-pulse conversion remains linear.
  * Call only while attitude control is idle and the frame is restrained.
  */
 bool servo_configure(uint32_t neutral_pulse_us, uint32_t deadband_us);

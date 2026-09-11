@@ -30,6 +30,11 @@ function wrapError(error) {
   return error === -180 && unwrapped > 0 ? 180 : error;
 }
 
+function angleError(target, current, relative) {
+  const error = target - current;
+  return relative ? error : wrapError(error);
+}
+
 /*
  * One-axis SILS plant:
  *   (Jb + Jw) * body_accel + Jw * wheel_accel = -b * body_rate
@@ -242,6 +247,9 @@ passed += 4;
 
 assert.equal(wrapError(180), 180);
 assert.equal(wrapError(-180), -180);
-passed += 2;
+assert.equal(angleError(360, 0, true), 360);
+assert.equal(angleError(-360, 0, true), -360);
+assert.equal(angleError(360, 0, false), 0);
+passed += 5;
 
 console.log(`PASS: ${passed} slew SILS assertions`);
