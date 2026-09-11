@@ -1,6 +1,8 @@
 // main.c
 #include <stdbool.h>
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "pico/stdlib.h"
@@ -18,6 +20,9 @@
 #include "servo.h"
 #include "camera.h"
 #include "rle.h"
+#include "attitude_control.h"
+#include "photoreflector.h"
+#include "wheel_sensor.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -28,6 +33,8 @@
 #define CAMERA_STREAM_INTERVAL_MS 500
 #define CAMERA_STREAM_MIN_INTERVAL_MS 250
 #define CAMERA_STREAM_MAX_INTERVAL_MS 10000
+#define ATTITUDE_CONTROL_INTERVAL_MS 20
+#define WHEEL_SENSOR_INTERVAL_MS 2
 
 static struct tcp_pcb *client_pcb = NULL;
 static volatile bool tcp_connected = false;
@@ -43,6 +50,14 @@ static uint32_t camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
 static absolute_time_t next_stream_capture;
 #define CAMERA_TRANSFER_CHUNK 4096u
 static uint8_t camera_transfer_chunk[CAMERA_TRANSFER_CHUNK];
+static attitude_control_t attitude_control;
+static wheel_sensor_t wheel_sensor;
+static absolute_time_t next_attitude_control_update;
+static absolute_time_t next_wheel_sensor_update;
+static uint64_t last_attitude_control_update_us;
+static attitude_control_mode_t reported_control_mode = ATTITUDE_CONTROL_IDLE;
+static attitude_control_fault_t reported_control_fault =
+    ATTITUDE_CONTROL_FAULT_NONE;
 static struct {
     bool active;
     bool header_queued;
@@ -222,6 +237,24 @@ static void send_telemetry(struct tcp_pcb *pcb) {
     char message[PROTOCOL_MAX_MESSAGE_LENGTH];
 
     telemetry_collect(&telemetry, command_get_value(&command_state));
+    const attitude_control_status_t *control_status =
+        attitude_control_get_status(&attitude_control);
+    telemetry.wheel_rpm_valid = wheel_sensor.valid && wheel_sensor.direction != 0;
+    telemetry.wheel_rpm_centi = (int32_t)lroundf(
+        wheel_sensor_signed_rpm(&wheel_sensor) * 100.0f);
+    telemetry.control_mode = (uint8_t)control_status->mode;
+    telemetry.control_fault = (uint8_t)control_status->fault;
+    telemetry.control_target_centi_deg = (int32_t)lroundf(
+        control_status->target_yaw_deg * 100.0f);
+    telemetry.control_error_centi_deg = (int32_t)lroundf(
+        control_status->angle_error_deg * 100.0f);
+    telemetry.control_rate_ref_centi_dps = (int32_t)lroundf(
+        control_status->target_rate_dps * 100.0f);
+    telemetry.control_wheel_command_centi_percent = (int32_t)lroundf(
+        control_status->wheel_command_percent * 100.0f);
+    telemetry.control_elapsed_ms = control_status->elapsed_ms;
+    telemetry.control_settled_ms = control_status->settled_ms;
+    telemetry.control_capture_issued = control_status->capture_issued;
 
     if (!protocol_encode_telemetry(&telemetry, message, sizeof(message))) {
         printf("telemetry formatting failed\n");
@@ -233,6 +266,134 @@ static void send_telemetry(struct tcp_pcb *pcb) {
     }
 }
 
+static bool parse_single_float(const char *text, float *value) {
+    char *end;
+    if (text == NULL || value == NULL || *text == '\0') return false;
+    float parsed = strtof(text, &end);
+    if (*end != '\0' || !isfinite(parsed)) return false;
+    *value = parsed;
+    return true;
+}
+
+static void format_centi_value(float value, char *text, size_t text_size) {
+    int32_t centi = (int32_t)lroundf(value * 100.0f);
+    if (centi < 0) {
+        uint32_t magnitude = (uint32_t)(-(int64_t)centi);
+        snprintf(text, text_size, "-%lu.%02lu",
+                 (unsigned long)(magnitude / 100u),
+                 (unsigned long)(magnitude % 100u));
+    } else {
+        snprintf(text, text_size, "%lu.%02lu",
+                 (unsigned long)((uint32_t)centi / 100u),
+                 (unsigned long)((uint32_t)centi % 100u));
+    }
+}
+
+static bool is_manual_speed_command(const char *line) {
+    return strncmp(line, "SET_VALUE,", 10) == 0 || *line == '-' ||
+           (*line >= '0' && *line <= '9');
+}
+
+static void send_control_status(void) {
+    const attitude_control_status_t *status =
+        attitude_control_get_status(&attitude_control);
+    char target[24];
+    char error[24];
+    char rate[24];
+    format_centi_value(status->target_yaw_deg, target, sizeof(target));
+    format_centi_value(status->angle_error_deg, error, sizeof(error));
+    format_centi_value(status->body_rate_dps, rate, sizeof(rate));
+    char reply[192];
+    snprintf(reply, sizeof(reply),
+             "SLEW_STATUS,%s,%s,target_deg=%s,error_deg=%s,rate_dps=%s,wheel_command=%ld,capture=%u\n",
+             attitude_control_mode_name(status->mode),
+             attitude_control_fault_name(status->fault), target, error, rate,
+             (long)status->servo_command_percent,
+             status->capture_issued ? 1u : 0u);
+    send_text(client_pcb, reply);
+}
+
+static bool start_slew(float requested_angle_deg, bool relative) {
+    icm42688_attitude_t attitude;
+    if (attitude_control_is_active(&attitude_control)) {
+        send_text(client_pcb, "ERROR,SLEW_BUSY\n");
+        return false;
+    }
+    if (camera_transfer.active || capture_request != 0) {
+        send_text(client_pcb, "ERROR,CAMERA_BUSY\n");
+        return false;
+    }
+    if (!icm42688_get_attitude(&attitude) || !attitude.calibrated) {
+        send_text(client_pcb, "ERROR,ATTITUDE_NOT_CALIBRATED\n");
+        return false;
+    }
+    if (command_get_value(&command_state) != 0) {
+        send_text(client_pcb, "ERROR,WHEEL_MANUAL_COMMAND_NOT_ZERO\n");
+        return false;
+    }
+    if (wheel_sensor.valid && wheel_sensor_rpm(&wheel_sensor) > 5.0f) {
+        send_text(client_pcb, "ERROR,WHEEL_NOT_STOPPED\n");
+        return false;
+    }
+    if (relative && fabsf(requested_angle_deg) > 180.0f) {
+        send_text(client_pcb, "ERROR,RELATIVE_ANGLE,-180_TO_180\n");
+        return false;
+    }
+    if (!relative && fabsf(requested_angle_deg) > 3600.0f) {
+        send_text(client_pcb, "ERROR,TARGET_ANGLE,-3600_TO_3600\n");
+        return false;
+    }
+
+    const float target = relative
+        ? attitude.yaw_deg + requested_angle_deg : requested_angle_deg;
+    camera_streaming = false;
+    servo_set_speed(0);
+    attitude_control_start(&attitude_control, target);
+    reported_control_mode = ATTITUDE_CONTROL_SLEW;
+    reported_control_fault = ATTITUDE_CONTROL_FAULT_NONE;
+
+    char target_text[24];
+    format_centi_value(target, target_text, sizeof(target_text));
+    char ack[64];
+    snprintf(ack, sizeof(ack), "ACK,SLEW_CAPTURE,target_deg=%s\n",
+             target_text);
+    send_text(client_pcb, ack);
+    return true;
+}
+
+static void configure_slew(const char *arguments) {
+    float angle_gain;
+    float rate_gain;
+    float wheel_gain;
+    float max_rate;
+    float max_wheel;
+    char extra;
+    if (attitude_control_is_active(&attitude_control)) {
+        send_text(client_pcb, "ERROR,SLEW_BUSY\n");
+        return;
+    }
+    if (sscanf(arguments, "%f,%f,%f,%f,%f%c", &angle_gain, &rate_gain,
+               &wheel_gain, &max_rate, &max_wheel, &extra) != 5 ||
+        !isfinite(angle_gain) || !isfinite(rate_gain) ||
+        !isfinite(wheel_gain) || !isfinite(max_rate) ||
+        !isfinite(max_wheel) || angle_gain < 0.05f || angle_gain > 2.0f ||
+        rate_gain < 0.1f || rate_gain > 5.0f ||
+        wheel_gain < 0.1f || wheel_gain > 10.0f ||
+        max_rate < 0.5f || max_rate > 30.0f ||
+        max_wheel < 10.0f || max_wheel > 90.0f) {
+        send_text(client_pcb,
+                  "ERROR,SLEW_CONFIG,angle_gain=0.05..2,rate_gain=0.1..5,wheel_gain=0.1..10,max_rate=0.5..30,max_wheel=10..90\n");
+        return;
+    }
+
+    attitude_control.config.angle_gain_per_s = angle_gain;
+    attitude_control.config.rate_gain_per_s = rate_gain;
+    attitude_control.config.wheel_command_gain = wheel_gain;
+    attitude_control.config.max_body_rate_dps = max_rate;
+    attitude_control.config.max_wheel_command_percent = max_wheel;
+    send_text(client_pcb, "ACK,SLEW_CONFIG\n");
+}
+
 // 送信応答
 /* This is the boundary between received TCP bytes and application commands. */
 static void handle_ground_command(const char *line, void *context) {
@@ -241,7 +402,42 @@ static void handle_ground_command(const char *line, void *context) {
 
     printf("PC -> Pico: %s\n", line);
 
+    if (strncmp(line, "SLEW_CAPTURE,", 13) == 0 ||
+        strncmp(line, "SLEW_REL_CAPTURE,", 17) == 0) {
+        const bool relative = strncmp(line, "SLEW_REL_CAPTURE,", 17) == 0;
+        float angle;
+        const char *value = line + (relative ? 17 : 13);
+        if (!parse_single_float(value, &angle)) {
+            send_text(client_pcb, "ERROR,INVALID_SLEW_ANGLE\n");
+            return;
+        }
+        start_slew(angle, relative);
+        return;
+    }
+
+    if (strcmp(line, "SLEW_ABORT") == 0) {
+        attitude_control_abort(&attitude_control);
+        servo_set_speed(0);
+        capture_request = 0;
+        send_text(client_pcb, "ACK,SLEW_ABORT\n");
+        return;
+    }
+
+    if (strcmp(line, "SLEW_STATUS") == 0) {
+        send_control_status();
+        return;
+    }
+
+    if (strncmp(line, "SLEW_CONFIG,", 12) == 0) {
+        configure_slew(line + 12);
+        return;
+    }
+
     if (strcmp(line, "ANGLE_RESET") == 0) {
+        if (attitude_control_is_active(&attitude_control)) {
+            send_text(client_pcb, "ERROR,SLEW_BUSY\n");
+            return;
+        }
         icm42688_gyro_z_angle_reset();
         send_text(client_pcb, "ACK,ANGLE_RESET\n");
         return;
@@ -249,6 +445,10 @@ static void handle_ground_command(const char *line, void *context) {
 
     if (strcmp(line, "STREAM_START") == 0 ||
         strncmp(line, "STREAM_START,", 13) == 0) {
+        if (attitude_control_is_active(&attitude_control)) {
+            send_text(client_pcb, "ERROR,SLEW_BUSY\n");
+            return;
+        }
         uint32_t interval = CAMERA_STREAM_INTERVAL_MS;
         if (line[12] == ',') {
             char extra;
@@ -280,7 +480,8 @@ static void handle_ground_command(const char *line, void *context) {
     }
 
     if (strcmp(line, "CAPTURE") == 0 || strcmp(line, "CAPTURE_TEST") == 0) {
-        if (camera_streaming || capture_request != 0 ||
+        if (attitude_control_is_active(&attitude_control) || camera_streaming ||
+            capture_request != 0 ||
             camera_transfer.active) {
             send_text(client_pcb, "ERROR,CAMERA_BUSY\n");
         } else {
@@ -290,16 +491,82 @@ static void handle_ground_command(const char *line, void *context) {
         return;
     }
 
+    const bool manual_speed_command = is_manual_speed_command(line);
     if (!command_handle_line(&command_state, line, reply, sizeof(reply))) {
         printf("command reply formatting failed\n");
         return;
     }
 
-    servo_set_speed(command_get_value(&command_state));
+    if (manual_speed_command) {
+        attitude_control_init(&attitude_control, NULL);
+        servo_set_speed(command_get_value(&command_state));
+        wheel_sensor_set_direction(&wheel_sensor,
+                                   command_get_value(&command_state));
+    }
 
     err_t err = send_text(client_pcb, reply);
     if (err != ERR_OK) {
         printf("command reply failed: %d\n", err);
+    }
+}
+
+static void sample_wheel_sensor(void) {
+    if (!time_reached(next_wheel_sensor_update)) return;
+    next_wheel_sensor_update = make_timeout_time_ms(WHEEL_SENSOR_INTERVAL_MS);
+    uint16_t raw = photoreflector_read_raw();
+    if (raw != PHOTOREFLECTOR_INVALID) {
+        wheel_sensor_process(&wheel_sensor, raw,
+                             to_us_since_boot(get_absolute_time()));
+    }
+}
+
+static void update_attitude_control(void) {
+    if (!time_reached(next_attitude_control_update)) return;
+    const uint64_t now_us = to_us_since_boot(get_absolute_time());
+    uint32_t dt_ms = ATTITUDE_CONTROL_INTERVAL_MS;
+    if (last_attitude_control_update_us != 0u) {
+        uint64_t elapsed_us = now_us - last_attitude_control_update_us;
+        dt_ms = (uint32_t)(elapsed_us / 1000u);
+        if (dt_ms == 0u) dt_ms = 1u;
+    }
+    last_attitude_control_update_us = now_us;
+    next_attitude_control_update =
+        make_timeout_time_ms(ATTITUDE_CONTROL_INTERVAL_MS);
+
+    icm42688_attitude_t attitude;
+    const bool valid = icm42688_get_attitude(&attitude) && attitude.calibrated;
+    attitude_control_update(&attitude_control, valid,
+                            valid ? attitude.yaw_deg : 0.0f,
+                            valid ? attitude.gyro_dps[2] : 0.0f,
+                            dt_ms);
+    const attitude_control_status_t *status =
+        attitude_control_get_status(&attitude_control);
+    if (attitude_control_is_active(&attitude_control)) {
+        servo_set_speed(status->servo_command_percent);
+    } else if (status->mode == ATTITUDE_CONTROL_FAULT ||
+               status->mode == ATTITUDE_CONTROL_ABORTED) {
+        servo_set_speed(0);
+    }
+    wheel_sensor_set_direction(&wheel_sensor,
+                               status->servo_command_percent);
+
+    if (status->capture_pending && tcp_connected &&
+        !camera_transfer.active && capture_request == 0 &&
+        attitude_control_take_capture_request(&attitude_control)) {
+        capture_request = 1;
+    }
+
+    if ((status->mode != reported_control_mode ||
+         status->fault != reported_control_fault) && tcp_connected) {
+        char event[96];
+        snprintf(event, sizeof(event), "EVENT,SLEW,%s,%s\n",
+                 attitude_control_mode_name(status->mode),
+                 attitude_control_fault_name(status->fault));
+        cyw43_arch_lwip_begin();
+        send_text(client_pcb, event);
+        cyw43_arch_lwip_end();
+        reported_control_mode = status->mode;
+        reported_control_fault = status->fault;
     }
 }
 
@@ -317,6 +584,8 @@ static void on_tcp_error(void *arg, err_t err) {
     capture_request = 0;
     camera_streaming = false;
     camera_transfer.active = false;
+    attitude_control_abort(&attitude_control);
+    servo_set_speed(0);
 }
 
 // 受け取り
@@ -327,6 +596,11 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
     if (err != ERR_OK) {
         if (p != NULL) pbuf_free(p);
         printf("receive error: %d\n", err);
+        capture_request = 0;
+        camera_streaming = false;
+        camera_transfer.active = false;
+        attitude_control_abort(&attitude_control);
+        servo_set_speed(0);
         return err;
     }
 
@@ -338,6 +612,8 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
         capture_request = 0;
         camera_streaming = false;
         camera_transfer.active = false;
+        attitude_control_abort(&attitude_control);
+        servo_set_speed(0);
         return tcp_close(pcb);
     }
 
@@ -410,6 +686,8 @@ int main(void) {
     command_init(&command_state);
     telemetry_init();
     servo_init();
+    wheel_sensor_init(&wheel_sensor);
+    attitude_control_init(&attitude_control, NULL);
 
     if (!icm42688_init()) {
         printf("ICM-42688 initialization failed\n");
@@ -435,8 +713,13 @@ int main(void) {
     printf("Connect PC, set IP to %s, then start its TCP server.\n", PC_IP);
 
     absolute_time_t next_telemetry = make_timeout_time_ms(TELEMETRY_INTERVAL_MS);
+    next_attitude_control_update =
+        make_timeout_time_ms(ATTITUDE_CONTROL_INTERVAL_MS);
+    next_wheel_sensor_update = make_timeout_time_ms(WHEEL_SENSOR_INTERVAL_MS);
 
     while (true) {
+        sample_wheel_sensor();
+        update_attitude_control();
         servo_update();
 
         // poll方式のWi-Fi/lwIP処理を進める。
@@ -467,6 +750,6 @@ int main(void) {
         }
 
         update_telemetry_led();
-        sleep_ms(10);
+        sleep_ms(2);
     }
 }

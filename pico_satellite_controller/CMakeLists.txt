@@ -40,10 +40,12 @@ add_executable(pico_satellite_controller
         telemetry.c
         protocol.c
         command.c
+        attitude_control.c
         angle_integrator.c
         icm42688.c
         photodiode.c
         photoreflector.c
+        wheel_sensor.c
         servo.c
         camera.c
         rle.c)

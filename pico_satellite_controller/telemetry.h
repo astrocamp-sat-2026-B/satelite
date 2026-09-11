@@ -22,6 +22,17 @@ typedef struct {
     uint16_t photodiode_adc[4];
     uint16_t photoreflector_adc;
     bool photoreflector_valid;
+    int32_t wheel_rpm_centi;
+    bool wheel_rpm_valid;
+    uint8_t control_mode;
+    uint8_t control_fault;
+    int32_t control_target_centi_deg;
+    int32_t control_error_centi_deg;
+    int32_t control_rate_ref_centi_dps;
+    int32_t control_wheel_command_centi_percent;
+    uint32_t control_elapsed_ms;
+    uint32_t control_settled_ms;
+    bool control_capture_issued;
 } telemetry_data_t;
 
 void telemetry_init(void);

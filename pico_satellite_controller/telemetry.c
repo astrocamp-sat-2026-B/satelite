@@ -60,4 +60,15 @@ void telemetry_collect(telemetry_data_t *telemetry, int32_t command_value) {
     telemetry->photoreflector_adc = photoreflector_read_raw();
     telemetry->photoreflector_valid =
         telemetry->photoreflector_adc != PHOTOREFLECTOR_INVALID;
+    telemetry->wheel_rpm_centi = 0;
+    telemetry->wheel_rpm_valid = false;
+    telemetry->control_mode = 0u;
+    telemetry->control_fault = 0u;
+    telemetry->control_target_centi_deg = 0;
+    telemetry->control_error_centi_deg = 0;
+    telemetry->control_rate_ref_centi_dps = 0;
+    telemetry->control_wheel_command_centi_percent = 0;
+    telemetry->control_elapsed_ms = 0u;
+    telemetry->control_settled_ms = 0u;
+    telemetry->control_capture_issued = false;
 }
