@@ -106,4 +106,3 @@ void servo_update(void) {
 
     pwm_set_gpio_level(SERVO_PIN, current_pulse_width_us);
 }
-
