@@ -251,7 +251,7 @@ CRCを検証し、BMPとして保存します。
 Picoは接続中、2秒ごとに次の形式でテレメトリを送ります。
 
 ```text
-Telemetry <- Pico: wifi_mode=AP,uptime_s=12,temp_c=26.45,random=381,command_value=50,gyro_z_dps=1.25,photodiode_adc=123|234|345|456,photoreflector_adc=512
+Telemetry <- Pico: wifi_mode=AP,uptime_s=12,temp_c=26.45,random=381,command_value=50,gyro_z_dps=1.25,gyro_z_angle_deg=45.30,photodiode_adc=123|234|345|456,photoreflector_adc=512
 ```
 
 | 項目 | 内容 |
