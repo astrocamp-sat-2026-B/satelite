@@ -32,7 +32,6 @@ typedef struct {
     int32_t control_wheel_command_centi_percent;
     uint32_t control_elapsed_ms;
     uint32_t control_settled_ms;
-    bool control_capture_issued;
 } telemetry_data_t;
 
 void telemetry_init(void);

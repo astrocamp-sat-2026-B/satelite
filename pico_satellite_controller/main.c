@@ -31,9 +31,6 @@
 #define TCP_PORT      4242
 #define TELEMETRY_INTERVAL_MS 500
 #define TELEMETRY_LED_ON_MS    200
-#define CAMERA_STREAM_INTERVAL_MS 500
-#define CAMERA_STREAM_MIN_INTERVAL_MS 250
-#define CAMERA_STREAM_MAX_INTERVAL_MS 10000
 #define ATTITUDE_CONTROL_INTERVAL_MS 20
 #define WHEEL_SENSOR_INTERVAL_MS 2
 #define TEXT_TX_QUEUE_CAPACITY 16u
@@ -47,9 +44,6 @@ static protocol_receiver_t command_receiver;
 static command_state_t command_state;
 static bool camera_initialized = false;
 static volatile int capture_request = 0; /* 1=photo, 2=colour bars */
-static bool camera_streaming = false;
-static uint32_t camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
-static absolute_time_t next_stream_capture;
 
 static attitude_control_t attitude_control;
 static wheel_sensor_t wheel_sensor;
@@ -67,7 +61,6 @@ typedef enum {
 
 static struct {
     bool active;
-    bool stream_frame;
     camera_transfer_stage_t stage;
     size_t source_position;
     size_t header_length;
@@ -76,7 +69,7 @@ static struct {
 
 static void trigger_sun_capture_if_needed(void) {
     uint16_t photodiode_adc[PHOTODIODE_CHANNEL_COUNT];
-    if (attitude_control_is_active(&attitude_control) || camera_streaming ||
+    if (attitude_control_is_active(&attitude_control) ||
         capture_request != 0 || camera_transfer.active || !tcp_connected) {
         return;
     }
@@ -235,17 +228,7 @@ static void pump_camera_transfer(struct tcp_pcb *pcb) {
 
 static void process_capture_request(void) {
     int request = capture_request;
-    bool stream_frame = false;
     if (!tcp_connected || camera_transfer.active || text_tx_queue.count != 0) return;
-    if (request == 0 && camera_streaming &&
-        absolute_time_diff_us(get_absolute_time(), next_stream_capture) <= 0) {
-        request = 1;
-        stream_frame = true;
-        /* Keep an absolute cadence. If transmission took too long, this
-         * deadline remains in the past and the next capture starts at once. */
-        next_stream_capture = delayed_by_ms(next_stream_capture,
-                                            camera_stream_interval_ms);
-    }
     if (request == 0) return;
     capture_request = 0;
 
@@ -266,15 +249,13 @@ static void process_capture_request(void) {
         cyw43_arch_lwip_begin();
         send_text(client_pcb, error);
         cyw43_arch_lwip_end();
-        camera_streaming = false;
         return;
     }
 
-    camera_transfer.stream_frame = stream_frame;
     camera_transfer.header_length = (size_t)snprintf(
         camera_transfer.header, sizeof(camera_transfer.header),
         "%s,%u,%u,RGB565,%u,%08lx\n",
-        stream_frame ? "FRAME_STREAM" : "FRAME", CAMERA_WIDTH, CAMERA_HEIGHT,
+        "FRAME", CAMERA_WIDTH, CAMERA_HEIGHT,
         (unsigned int)camera_get_frame_size(),
         (unsigned long)crc32(camera_get_frame(), camera_get_frame_size()));
     if (camera_transfer.header_length == 0 ||
@@ -329,7 +310,6 @@ static void send_telemetry(struct tcp_pcb *pcb) {
         control_status->wheel_command_percent * 100.0f);
     telemetry.control_elapsed_ms = control_status->elapsed_ms;
     telemetry.control_settled_ms = control_status->settled_ms;
-    telemetry.control_capture_issued = control_status->capture_issued;
 
     if (!protocol_encode_telemetry(&telemetry, message, sizeof(message))) {
         printf("telemetry formatting failed\n");
@@ -383,12 +363,11 @@ static void send_control_status(void) {
                        sizeof(integral_rate));
     char reply[256];
     snprintf(reply, sizeof(reply),
-             "SLEW_STATUS,%s,%s,target_deg=%s,error_deg=%s,rate_dps=%s,integral_rate_dps=%s,wheel_command=%ld,capture=%u\n",
+             "SLEW_STATUS,%s,%s,target_deg=%s,error_deg=%s,rate_dps=%s,integral_rate_dps=%s,wheel_command=%ld\n",
              attitude_control_mode_name(status->mode),
              attitude_control_fault_name(status->fault), target, error, rate,
              integral_rate,
-             (long)status->servo_command_percent,
-             status->capture_issued ? 1u : 0u);
+             (long)status->servo_command_percent);
     send_text(client_pcb, reply);
 }
 
@@ -425,7 +404,6 @@ static bool start_slew(float requested_angle_deg, bool relative) {
 
     const float target = relative
         ? attitude.yaw_deg + requested_angle_deg : requested_angle_deg;
-    camera_streaming = false;
     servo_set_speed(0);
     attitude_control_start(&attitude_control, target);
     reported_control_mode = ATTITUDE_CONTROL_SLEW;
@@ -434,7 +412,7 @@ static bool start_slew(float requested_angle_deg, bool relative) {
     char target_text[24];
     format_centi_value(target, target_text, sizeof(target_text));
     char ack[64];
-    snprintf(ack, sizeof(ack), "ACK,SLEW_CAPTURE,target_deg=%s\n",
+    snprintf(ack, sizeof(ack), "ACK,SLEW,target_deg=%s\n",
              target_text);
     send_text(client_pcb, ack);
     return true;
@@ -533,11 +511,11 @@ static void handle_ground_command(const char *line, void *context) {
 
     printf("PC -> Pico: %s\n", line);
 
-    if (strncmp(line, "SLEW_CAPTURE,", 13) == 0 ||
-        strncmp(line, "SLEW_REL_CAPTURE,", 17) == 0) {
-        const bool relative = strncmp(line, "SLEW_REL_CAPTURE,", 17) == 0;
+    if (strncmp(line, "SLEW,", 5) == 0 ||
+        strncmp(line, "SLEW_REL,", 9) == 0) {
+        const bool relative = strncmp(line, "SLEW_REL,", 9) == 0;
         float angle;
-        const char *value = line + (relative ? 17 : 13);
+        const char *value = line + (relative ? 9 : 5);
         if (!parse_single_float(value, &angle)) {
             send_text(client_pcb, "ERROR,INVALID_SLEW_ANGLE\n");
             return;
@@ -593,44 +571,10 @@ static void handle_ground_command(const char *line, void *context) {
         return;
     }
 
-    if (strcmp(line, "STREAM_START") == 0 ||
-        strncmp(line, "STREAM_START,", 13) == 0) {
-        if (attitude_control_is_active(&attitude_control)) {
-            send_text(client_pcb, "ERROR,SLEW_BUSY\n");
-            return;
-        }
-        uint32_t interval = CAMERA_STREAM_INTERVAL_MS;
-        if (line[12] == ',') {
-            char extra;
-            unsigned int parsed;
-            if (sscanf(line + 13, "%u%c", &parsed, &extra) != 1 ||
-                parsed < CAMERA_STREAM_MIN_INTERVAL_MS ||
-                parsed > CAMERA_STREAM_MAX_INTERVAL_MS) {
-                send_text(client_pcb,
-                          "ERROR,STREAM_INTERVAL,250_TO_10000_MS\n");
-                return;
-            }
-            interval = parsed;
-        }
-        camera_stream_interval_ms = interval;
-        camera_streaming = true;
-        next_stream_capture = get_absolute_time();
-        char ack[48];
-        snprintf(ack, sizeof(ack), "ACK,STREAM_START,%lu\n",
-                 (unsigned long)interval);
-        send_text(client_pcb, ack);
-        return;
-    }
-
-    if (strcmp(line, "STREAM_STOP") == 0) {
-        camera_streaming = false;
-        capture_request = 0;
-        send_text(client_pcb, "ACK,STREAM_STOP\n");
-        return;
-    }
-
     if (strcmp(line, "CAPTURE") == 0 || strcmp(line, "CAPTURE_TEST") == 0) {
-        if (attitude_control_is_active(&attitude_control) || camera_streaming ||
+        const attitude_control_status_t *control_status =
+            attitude_control_get_status(&attitude_control);
+        if (control_status->mode == ATTITUDE_CONTROL_SLEW ||
             capture_request != 0 ||
             camera_transfer.active) {
             send_text(client_pcb, "ERROR,CAMERA_BUSY\n");
@@ -737,12 +681,6 @@ static void update_attitude_control(void) {
     wheel_sensor_set_direction(&wheel_sensor,
                                status->servo_command_percent);
 
-    if (status->capture_pending && tcp_connected &&
-        !camera_transfer.active && capture_request == 0 &&
-        attitude_control_take_capture_request(&attitude_control)) {
-        capture_request = 1;
-    }
-
     if ((status->mode != reported_control_mode ||
          status->fault != reported_control_fault) && tcp_connected) {
         char event[96];
@@ -769,7 +707,6 @@ static void on_tcp_error(void *arg, err_t err) {
     tcp_connected = false;
     tcp_connecting = false;
     capture_request = 0;
-    camera_streaming = false;
     camera_transfer.active = false;
     camera_transfer.stage = CAMERA_TRANSFER_IDLE;
     text_tx_queue.count = 0;
@@ -787,7 +724,6 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
         if (p != NULL) pbuf_free(p);
         printf("receive error: %d\n", err);
         capture_request = 0;
-        camera_streaming = false;
         camera_transfer.active = false;
         attitude_control_abort(&attitude_control);
         servo_set_speed(0);
@@ -800,7 +736,6 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
         tcp_connected = false;
         tcp_connecting = false;
         capture_request = 0;
-        camera_streaming = false;
         camera_transfer.active = false;
         camera_transfer.stage = CAMERA_TRANSFER_IDLE;
         text_tx_queue.count = 0;
@@ -833,9 +768,6 @@ static err_t on_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
 
     client_pcb = pcb;
     tcp_connected = true;
-    camera_streaming = true;
-    camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
-    next_stream_capture = get_absolute_time();
     tcp_recv(pcb, on_receive);
 
     printf("Connected to PC server\n");

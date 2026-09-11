@@ -485,7 +485,7 @@ every 20 ms:
       HOLD:
         rate_ref = clamp(K_angle_hold * angle_error, ...)
         run same inner loop at lower limits
-        if settled: permit_capture()
+        if settled: enter_hold()
 
       RATE:
         torque_cmd = rate_controller(target_rate, gyro_z)

@@ -70,5 +70,4 @@ void telemetry_collect(telemetry_data_t *telemetry, int32_t command_value) {
     telemetry->control_wheel_command_centi_percent = 0;
     telemetry->control_elapsed_ms = 0u;
     telemetry->control_settled_ms = 0u;
-    telemetry->control_capture_issued = false;
 }

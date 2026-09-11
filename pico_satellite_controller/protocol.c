@@ -110,7 +110,7 @@ bool protocol_encode_telemetry(const telemetry_data_t *telemetry, char *message,
     length = snprintf(
         message,
         message_size,
-        "TELEMETRY,wifi_mode=AP,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=%s,gyro_z_angle_deg=%s,roll_deg=%s,pitch_deg=%s,attitude_calibrated=%u,imu_samples=%lu,imu_rejected=%lu,photodiode_adc=%u|%u|%u|%u,photoreflector_adc=%s,wheel_rpm=%s,control_mode=%s,control_fault=%s,control_target_deg=%s,control_error_deg=%s,control_rate_ref_dps=%s,control_wheel_command_percent=%s,control_elapsed_ms=%lu,control_settled_ms=%lu,control_capture_issued=%u\n",
+        "TELEMETRY,wifi_mode=AP,uptime_s=%lu,temp_c=%d.%02d,random=%lu,command_value=%ld,gyro_z_dps=%s,gyro_z_angle_deg=%s,roll_deg=%s,pitch_deg=%s,attitude_calibrated=%u,imu_samples=%lu,imu_rejected=%lu,photodiode_adc=%u|%u|%u|%u,photoreflector_adc=%s,wheel_rpm=%s,control_mode=%s,control_fault=%s,control_target_deg=%s,control_error_deg=%s,control_rate_ref_dps=%s,control_wheel_command_percent=%s,control_elapsed_ms=%lu,control_settled_ms=%lu\n",
         (unsigned long)telemetry->uptime_s,
         telemetry->temperature_centi_c / 100,
         fraction,
@@ -138,8 +138,7 @@ bool protocol_encode_telemetry(const telemetry_data_t *telemetry, char *message,
         control_rate_ref_text,
         control_wheel_command_text,
         (unsigned long)telemetry->control_elapsed_ms,
-        (unsigned long)telemetry->control_settled_ms,
-        telemetry->control_capture_issued ? 1u : 0u
+        (unsigned long)telemetry->control_settled_ms
     );
 
     return length >= 0 && (size_t)length < message_size;

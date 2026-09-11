@@ -34,7 +34,6 @@ static void set_fault(attitude_control_t *control,
     control->status.fault = fault;
     control->status.wheel_command_percent = 0.0f;
     control->status.servo_command_percent = 0;
-    control->status.capture_pending = false;
 }
 
 void attitude_control_default_config(attitude_control_config_t *config) {
@@ -81,8 +80,6 @@ static bool start_control(attitude_control_t *control, float target_yaw_deg,
     control->status.elapsed_ms = 0u;
     control->status.settled_ms = 0u;
     control->status.saturated_ms = 0u;
-    control->status.capture_pending = false;
-    control->status.capture_issued = false;
     return true;
 }
 
@@ -100,7 +97,6 @@ void attitude_control_abort(attitude_control_t *control) {
     control->status.fault = ATTITUDE_CONTROL_FAULT_NONE;
     control->status.wheel_command_percent = 0.0f;
     control->status.servo_command_percent = 0;
-    control->status.capture_pending = false;
 }
 
 void attitude_control_update(attitude_control_t *control,
@@ -201,20 +197,12 @@ void attitude_control_update(attitude_control_t *control,
     if (status->mode == ATTITUDE_CONTROL_SLEW &&
         status->settled_ms >= config->settle_time_ms) {
         status->mode = ATTITUDE_CONTROL_HOLD;
-        status->capture_pending = true;
     }
 
     if (status->mode == ATTITUDE_CONTROL_SLEW &&
         status->elapsed_ms >= config->slew_timeout_ms) {
         set_fault(control, ATTITUDE_CONTROL_FAULT_TIMEOUT);
     }
-}
-
-bool attitude_control_take_capture_request(attitude_control_t *control) {
-    if (control == NULL || !control->status.capture_pending) return false;
-    control->status.capture_pending = false;
-    control->status.capture_issued = true;
-    return true;
 }
 
 bool attitude_control_is_active(const attitude_control_t *control) {
