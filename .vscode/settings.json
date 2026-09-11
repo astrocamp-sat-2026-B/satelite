@@ -1,4 +1,0 @@
-{
-    "cmake.sourceDirectory": "${workspaceFolder}/pico_ap_tcp_client",
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/pico_ap_tcp_client/build/compile_commands.json"
-}
