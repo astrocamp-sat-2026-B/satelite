@@ -86,6 +86,12 @@ static void trigger_sun_capture_if_needed(void) {
         return;
     }
 
+    icm42688_attitude_t attitude;
+    if (icm42688_get_attitude(&attitude) && attitude.calibrated &&
+        isfinite(attitude.yaw_deg)) {
+        /* Keep the sun-detection attitude while the requested photo is taken. */
+        attitude_control_hold(&attitude_control, attitude.yaw_deg);
+    }
     capture_request = 1;
 }
 

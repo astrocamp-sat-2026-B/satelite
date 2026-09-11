@@ -57,6 +57,8 @@ void attitude_control_default_config(attitude_control_config_t *config);
 void attitude_control_init(attitude_control_t *control,
                            const attitude_control_config_t *config);
 bool attitude_control_start(attitude_control_t *control, float target_yaw_deg);
+/* Starts holding the supplied yaw without issuing a camera capture request. */
+bool attitude_control_hold(attitude_control_t *control, float target_yaw_deg);
 void attitude_control_abort(attitude_control_t *control);
 void attitude_control_update(attitude_control_t *control,
                              bool attitude_valid,
