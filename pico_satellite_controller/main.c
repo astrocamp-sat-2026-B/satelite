@@ -17,7 +17,7 @@
 #include "icm42688.h"
 #include "servo.h"
 #include "camera.h"
-#include "rle.h"
+#include "jpeg_encoder.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -28,6 +28,8 @@
 #define CAMERA_STREAM_INTERVAL_MS 500
 #define CAMERA_STREAM_MIN_INTERVAL_MS 250
 #define CAMERA_STREAM_MAX_INTERVAL_MS 10000
+#define CAMERA_JPEG_MCUS_PER_POLL 4u
+#define TEXT_TX_QUEUE_CAPACITY 16u
 
 static struct tcp_pcb *client_pcb = NULL;
 static volatile bool tcp_connected = false;
@@ -41,15 +43,25 @@ static volatile int capture_request = 0; /* 1=photo, 2=colour bars */
 static bool camera_streaming = false;
 static uint32_t camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
 static absolute_time_t next_stream_capture;
-#define CAMERA_TRANSFER_CHUNK 4096u
-static uint8_t camera_transfer_chunk[CAMERA_TRANSFER_CHUNK];
+typedef enum {
+    CAMERA_TRANSFER_IDLE,
+    CAMERA_TRANSFER_SEND_HEADER,
+    CAMERA_TRANSFER_SEND_JPEG,
+} camera_transfer_stage_t;
+
 static struct {
     bool active;
-    bool header_queued;
-    size_t src_pos; /* bytes of the raw frame already RLE-encoded and sent */
+    bool stream_frame;
+    camera_transfer_stage_t stage;
     size_t header_length;
     char header[96];
 } camera_transfer;
+
+static struct {
+    char messages[TEXT_TX_QUEUE_CAPACITY][PROTOCOL_MAX_MESSAGE_LENGTH];
+    unsigned head;
+    unsigned count;
+} text_tx_queue;
 
 static void imu_worker(void) {
     absolute_time_t next = get_absolute_time();
@@ -64,19 +76,9 @@ static void imu_worker(void) {
     }
 }
 
-static uint32_t crc32(const uint8_t *data, size_t size) {
-    uint32_t crc = 0xffffffffu;
-    while (size--) {
-        crc ^= *data++;
-        for (int i = 0; i < 8; ++i) {
-            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
-        }
-    }
-    return ~crc;
-}
-
 // 送信
-static err_t send_text(struct tcp_pcb *pcb, const char *text) {
+static err_t send_text_now(struct tcp_pcb *pcb, const char *text) {
+    if (pcb == NULL || text == NULL) return ERR_ARG;
     err_t err = tcp_write(pcb, text, strlen(text), TCP_WRITE_FLAG_COPY);
     if (err != ERR_OK) {
         printf("tcp_write failed: %d\n", err);
@@ -85,78 +87,114 @@ static err_t send_text(struct tcp_pcb *pcb, const char *text) {
     return tcp_output(pcb);
 }
 
+static err_t queue_text(const char *text) {
+    size_t length;
+    unsigned tail;
+
+    if (text == NULL) return ERR_ARG;
+    length = strlen(text);
+    if (length >= PROTOCOL_MAX_MESSAGE_LENGTH ||
+        text_tx_queue.count >= TEXT_TX_QUEUE_CAPACITY) {
+        printf("control message queue full; discarded\n");
+        return ERR_MEM;
+    }
+    tail = (text_tx_queue.head + text_tx_queue.count) % TEXT_TX_QUEUE_CAPACITY;
+    memcpy(text_tx_queue.messages[tail], text, length + 1u);
+    ++text_tx_queue.count;
+    return ERR_OK;
+}
+
+/* Text ACKs, telemetry, and image bytes use one TCP connection. Queue text
+ * while JPEG is active so no control line can be inserted inside its body. */
+static err_t send_text(struct tcp_pcb *pcb, const char *text) {
+    if (camera_transfer.active) return queue_text(text);
+    return send_text_now(pcb, text);
+}
+
+static void flush_text_queue(struct tcp_pcb *pcb) {
+    while (!camera_transfer.active && text_tx_queue.count != 0) {
+        char *text = text_tx_queue.messages[text_tx_queue.head];
+        err_t err = send_text_now(pcb, text);
+        if (err != ERR_OK) return;
+        text_tx_queue.head = (text_tx_queue.head + 1u) % TEXT_TX_QUEUE_CAPACITY;
+        --text_tx_queue.count;
+    }
+}
+
 static void finish_camera_transfer(void) {
     camera_transfer.active = false;
-    if (camera_streaming) {
-        next_stream_capture = make_timeout_time_ms(camera_stream_interval_ms);
-    }
+    camera_transfer.stage = CAMERA_TRANSFER_IDLE;
     printf("Camera frame queued for PC\n");
 }
 
-/* Queue a captured frame gradually so the lwIP send buffer is never
- * overrun. The body is RLE-compressed on the fly into a small fixed
- * chunk buffer right before each send, so no second full-frame buffer
- * is needed alongside the raw capture. */
+static void fail_camera_transfer(const char *message) {
+    camera_transfer.active = false;
+    camera_transfer.stage = CAMERA_TRANSFER_IDLE;
+    printf("Camera JPEG transfer failed: %s", message);
+    send_text(client_pcb, message);
+}
+
+/* JPEG has an unambiguous EOI marker, so the ground station can frame it
+ * without a pre-encoding pass to learn its length. This keeps the one raw
+ * camera frame as the only full-image allocation and avoids encoding twice. */
 static void pump_camera_transfer(struct tcp_pcb *pcb) {
     if (!camera_transfer.active || pcb == NULL) return;
 
-    if (!camera_transfer.header_queued) {
-        size_t remaining = camera_transfer.header_length;
+    if (camera_transfer.stage == CAMERA_TRANSFER_SEND_HEADER) {
         u16_t available = tcp_sndbuf(pcb);
-        if (available == 0 || available < remaining) return;
-
-        err_t err = tcp_write(pcb, camera_transfer.header, (u16_t)remaining,
+        if (available < camera_transfer.header_length) return;
+        err_t err = tcp_write(pcb, camera_transfer.header,
+                              (u16_t)camera_transfer.header_length,
                               TCP_WRITE_FLAG_COPY);
         if (err == ERR_MEM) return;
         if (err != ERR_OK) {
-            printf("camera tcp_write failed: %d\n", err);
-            camera_transfer.active = false;
+            fail_camera_transfer("ERROR,CAMERA_JPEG_ENCODE\n");
             return;
         }
-        camera_transfer.header_queued = true;
         tcp_output(pcb);
+        camera_transfer.stage = CAMERA_TRANSFER_SEND_JPEG;
         return;
     }
 
-    u16_t available = tcp_sndbuf(pcb);
-    if (available == 0) return;
-    size_t out_cap = available < CAMERA_TRANSFER_CHUNK ? available
-                                                        : CAMERA_TRANSFER_CHUNK;
+    if (camera_transfer.stage == CAMERA_TRANSFER_SEND_JPEG) {
+        size_t pending = jpeg_encoder_pending_size();
+        if (pending != 0) {
+            u16_t available = tcp_sndbuf(pcb);
+            if (available == 0) return;
+            size_t count = pending < available ? pending : available;
+            err_t err = tcp_write(pcb, jpeg_encoder_pending_data(), (u16_t)count,
+                                  TCP_WRITE_FLAG_COPY);
+            if (err == ERR_MEM) return;
+            if (err != ERR_OK) {
+                fail_camera_transfer("ERROR,CAMERA_JPEG_TRANSFER\n");
+                return;
+            }
+            jpeg_encoder_consume_pending(count);
+            tcp_output(pcb);
+            return;
+        }
 
-    size_t next_pos = camera_transfer.src_pos;
-    size_t chunk_len = rle_encode_rgb565_chunk(
-        camera_get_frame(), camera_get_frame_size(), &next_pos,
-        camera_transfer_chunk, out_cap);
-
-    if (chunk_len == 0) {
-        if (next_pos >= camera_get_frame_size()) finish_camera_transfer();
-        return;
-    }
-
-    err_t err = tcp_write(pcb, camera_transfer_chunk, (u16_t)chunk_len,
-                          TCP_WRITE_FLAG_COPY);
-    if (err == ERR_MEM) return;
-    if (err != ERR_OK) {
-        printf("camera tcp_write failed: %d\n", err);
-        camera_transfer.active = false;
-        return;
-    }
-    camera_transfer.src_pos = next_pos;
-    tcp_output(pcb);
-
-    if (camera_transfer.src_pos >= camera_get_frame_size()) {
-        finish_camera_transfer();
+        jpeg_encoder_status_t status = jpeg_encoder_send_step(CAMERA_JPEG_MCUS_PER_POLL);
+        if (status == JPEG_ENCODER_ERROR) {
+            fail_camera_transfer("ERROR,CAMERA_JPEG_ENCODE\n");
+        } else if (status == JPEG_ENCODER_DONE) {
+            finish_camera_transfer();
+        }
     }
 }
 
 static void process_capture_request(void) {
     int request = capture_request;
     bool stream_frame = false;
-    if (!tcp_connected || camera_transfer.active) return;
+    if (!tcp_connected || camera_transfer.active || text_tx_queue.count != 0) return;
     if (request == 0 && camera_streaming &&
         absolute_time_diff_us(get_absolute_time(), next_stream_capture) <= 0) {
         request = 1;
         stream_frame = true;
+        /* Keep an absolute cadence. If transmission took too long, this
+         * deadline remains in the past and the next capture starts at once. */
+        next_stream_capture = delayed_by_ms(next_stream_capture,
+                                            camera_stream_interval_ms);
     }
     if (request == 0) return;
     capture_request = 0;
@@ -182,20 +220,25 @@ static void process_capture_request(void) {
         return;
     }
 
-    /* The header carries the frame's *decompressed* size and the CRC of
-     * the raw pixels, exactly as before RLE was added: the receiver
-     * doesn't need to know the compressed length up front, since it
-     * just keeps decoding incoming bytes until it has produced that many
-     * decompressed bytes. */
-    const uint8_t *raw_frame = camera_get_frame();
+    if (!jpeg_encoder_begin_send(camera_get_frame(), CAMERA_WIDTH, CAMERA_HEIGHT)) {
+        cyw43_arch_lwip_begin();
+        send_text(client_pcb, "ERROR,CAMERA_JPEG_ENCODE\n");
+        cyw43_arch_lwip_end();
+        return;
+    }
+    camera_transfer.stream_frame = stream_frame;
     camera_transfer.header_length = (size_t)snprintf(
         camera_transfer.header, sizeof(camera_transfer.header),
-        "%s,%u,%u,RGB565RLE,%u,%08lx\n",
-        stream_frame ? "FRAME_STREAM" : "FRAME",
-        CAMERA_WIDTH, CAMERA_HEIGHT, (unsigned int)camera_get_frame_size(),
-        (unsigned long)crc32(raw_frame, camera_get_frame_size()));
-    camera_transfer.header_queued = false;
-    camera_transfer.src_pos = 0;
+        "%s,%u,%u,JPEG,0,00000000\n",
+        stream_frame ? "FRAME_STREAM" : "FRAME", CAMERA_WIDTH, CAMERA_HEIGHT);
+    if (camera_transfer.header_length == 0 ||
+        camera_transfer.header_length >= sizeof(camera_transfer.header)) {
+        cyw43_arch_lwip_begin();
+        send_text(client_pcb, "ERROR,CAMERA_JPEG_HEADER\n");
+        cyw43_arch_lwip_end();
+        return;
+    }
+    camera_transfer.stage = CAMERA_TRANSFER_SEND_HEADER;
     camera_transfer.active = true;
 }
 
@@ -317,6 +360,9 @@ static void on_tcp_error(void *arg, err_t err) {
     capture_request = 0;
     camera_streaming = false;
     camera_transfer.active = false;
+    camera_transfer.stage = CAMERA_TRANSFER_IDLE;
+    text_tx_queue.count = 0;
+    text_tx_queue.head = 0;
 }
 
 // 受け取り
@@ -338,6 +384,9 @@ static err_t on_receive(void *arg, struct tcp_pcb *pcb, struct pbuf *p,
         capture_request = 0;
         camera_streaming = false;
         camera_transfer.active = false;
+        camera_transfer.stage = CAMERA_TRANSFER_IDLE;
+        text_tx_queue.count = 0;
+        text_tx_queue.head = 0;
         return tcp_close(pcb);
     }
 
@@ -441,6 +490,12 @@ int main(void) {
 
         // poll方式のWi-Fi/lwIP処理を進める。
         cyw43_arch_poll();
+
+        if (tcp_connected && !camera_transfer.active && text_tx_queue.count != 0) {
+            cyw43_arch_lwip_begin();
+            flush_text_queue(client_pcb);
+            cyw43_arch_lwip_end();
+        }
 
         process_capture_request();
 

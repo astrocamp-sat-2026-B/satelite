@@ -84,11 +84,11 @@ static void begin_session_save(void);
 static const char DASHBOARD_HTML[] =
 "<!doctype html><html lang=\"ja\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Pico telemetry</title><style>"
 "*{box-sizing:border-box}body{margin:0;background:#0b121a;color:#e8f0f7;font-family:system-ui,sans-serif}main{max-width:1800px;margin:auto;padding:12px}.top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}h1{margin:0;font-size:1.45rem}.sub{color:#9eb0c0;margin:3px 0}.actions{display:flex;gap:6px;flex-wrap:wrap}button,label.file,input.command{background:#182838;border:1px solid #38546d;color:#e8f0f7;border-radius:7px;padding:7px 9px;font:inherit;font-size:.88rem}button,label.file{cursor:pointer}button:disabled{cursor:default;opacity:.45}input.command{min-width:160px}button.primary{background:#1977b5}label.file input{display:none}.status{display:flex;gap:8px;align-items:center;margin:10px 0;padding:8px 10px;background:#111e2b;border:1px solid #293f53;border-radius:8px}.dot{width:10px;height:10px;border-radius:50%;background:#8192a2}.receiving{background:#42d99a}.stale{background:#f2b35a}.waiting{background:#64b7ff}.reconnecting{background:#f2b35a}.disconnected{background:#f06778}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px}.card,.section{background:#111e2b;border:1px solid #293f53;border-radius:10px}.card{padding:9px}.label{font-size:.69rem;color:#9eb0c0;text-transform:uppercase;letter-spacing:.05em}.value{font-size:1.18rem;font-weight:650;margin:4px 0 6px;font-variant-numeric:tabular-nums}.range{display:flex;gap:12px;font-size:.68rem;color:#9eb0c0}.range b{display:block;color:#e8f0f7;font-size:.78rem;margin-top:1px;font-weight:500}.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px;margin-top:10px}.section{padding:10px}.head{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:6px}.head h2{font-size:.96rem;margin:0}.meta{color:#9eb0c0;font-size:.76rem}.chart{width:100%;height:auto;display:block;background:#0b151f;border-radius:6px}.grid{stroke:#263d51;stroke-width:1}.axis{fill:#9eb0c0;font-size:11px}.line{fill:none;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}.temp{stroke:#49c4ff}.gyro{stroke:#9dde68}.pd0{stroke:#ffba5c}.pd1{stroke:#7dc9ff}.pd2{stroke:#e38fff}.pd3{stroke:#70e0b0}.scroll{max-height:180px;overflow:auto;border:1px solid #293f53;border-radius:7px}table{width:100%;border-collapse:collapse;font-size:.78rem}th,td{padding:6px 8px;border-bottom:1px solid #213447;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}tr.event td{background:#162636;color:#b9d7ea;text-align:left;font-style:italic}th{position:sticky;top:0;background:#182838;color:#c4d7e7;font-weight:500}th:first-child,td:first-child{text-align:left}@media(max-width:800px){main{padding:10px}.scroll{max-height:240px}input.command{min-width:140px}}</style></head><body><main>"
-"<header class=\"top\"><div><h1>Pico W Telemetry</h1><p class=\"sub\">Live monitor, command timeline, portable snapshots and replay</p></div><div class=\"actions\"><input class=\"command\" id=\"command-input\" placeholder=\"SERVO,123 or SET_VALUE,123\"><button class=\"primary\" id=\"send-command\" type=\"button\">Send command</button><button id=\"capture-camera\" type=\"button\">Capture camera</button><button id=\"save\" type=\"button\">Save CSV</button><button id=\"export-html\" type=\"button\">Export HTML</button><label class=\"file\">Load CSV<input id=\"load\" type=\"file\" accept=\".csv,text/csv\"></label><label class=\"file\">Load images<input id=\"load-images\" type=\"file\" accept=\".bmp,image/bmp\" multiple></label><button id=\"live\" type=\"button\">Resume live</button></div></header>"
+"<header class=\"top\"><div><h1>Pico W Telemetry</h1><p class=\"sub\">Live monitor, command timeline, portable snapshots and replay</p></div><div class=\"actions\"><input class=\"command\" id=\"command-input\" placeholder=\"SERVO,123 or SET_VALUE,123\"><button class=\"primary\" id=\"send-command\" type=\"button\">Send command</button><button id=\"capture-camera\" type=\"button\">Capture camera</button><button id=\"save\" type=\"button\">Save CSV</button><button id=\"export-html\" type=\"button\">Export HTML</button><label class=\"file\">Load CSV<input id=\"load\" type=\"file\" accept=\".csv,text/csv\"></label><label class=\"file\">Load images<input id=\"load-images\" type=\"file\" accept=\".bmp,.png,.jpg,.jpeg,image/bmp,image/png,image/jpeg\" multiple></label><button id=\"live\" type=\"button\">Resume live</button></div></header>"
 "<style>.workspace{display:grid;grid-template-columns:minmax(500px,1fr) minmax(270px,.36fr) minmax(400px,.70fr);grid-template-rows:auto auto auto;gap:10px;margin-top:10px;align-items:start}.workspace>.metrics{grid-column:1;grid-row:1;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.workspace .card{min-width:0;padding:7px}.workspace .label{font-size:.64rem}.workspace .value{font-size:1.06rem;margin:3px 0 5px}.workspace .range{gap:9px;font-size:.62rem}.workspace .range b{font-size:.72rem}.camera-panel{grid-column:1;grid-row:2;justify-self:start;width:calc(50% - 5px);margin:0}.camera-content{display:grid;gap:8px;width:100%}.camera-image{display:block;width:100%;height:270px;object-fit:contain;background:#080e14;border-radius:7px}.camera-tools{width:100%;min-width:0;display:grid;gap:6px}.camera-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;width:100%}.camera-nav button{width:100%}.camera-link{padding:2px 5px;border-radius:4px;color:#bfe5ff;font-style:normal}.history-section{grid-column:2;grid-row:1 / span 3;align-self:stretch;min-height:620px;margin:0}.history-section .scroll{height:565px;max-height:calc(100vh - 230px)}.graph-stack{grid-column:3;grid-row:1 / span 3;display:grid;gap:6px;align-content:start;min-width:0}.graph-range{padding:8px}.graph-range .head{display:grid;gap:4px;align-items:start;margin:0!important}.graph-range .head>div{display:flex!important;width:100%;min-width:0}.graph-range input[type=range]{flex:1 1 0;min-width:0;width:auto!important}.graph-range .meta{white-space:nowrap}.graph-charts{display:grid;grid-template-columns:1fr;gap:6px;margin:0}.graph-charts .section{padding:8px}.board-section{grid-column:1;grid-row:2;justify-self:end;width:calc(50% - 5px);margin:0}.board-map{position:relative;max-width:180px;margin:auto;line-height:1}.board-map img{display:block;width:100%;height:auto;border-radius:8px}.sensor-dot{position:absolute;transform:translate(-50%,-50%);width:clamp(25px,3vw,34px);height:clamp(25px,3vw,34px);border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-line;line-height:1.08;font-size:clamp(7px,.85vw,9px);font-weight:750;color:#fff;text-shadow:0 1px 2px #000;box-shadow:0 0 0 2px #101820,0 0 14px rgba(255,55,55,.65);transition:background .35s,box-shadow .35s}.board-key{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:#9eb0c0;font-size:.72rem;margin:0 0 7px}.red-scale{width:80px;height:8px;border-radius:8px;background:linear-gradient(90deg,rgba(240,40,40,.2),rgba(240,40,40,1))}.sequence-section{grid-column:1;grid-row:3;margin:0}.sequence-rows{display:grid;gap:5px}.sequence-row{display:grid;grid-template-columns:74px minmax(0,1fr) 34px;gap:5px}.sequence-row input{min-width:0;width:100%;background:#182838;border:1px solid #38546d;color:#e8f0f7;border-radius:6px;padding:6px;font:inherit;font-size:.8rem}.sequence-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.command-marker{fill:rgba(255,202,92,.12);stroke:#ffd276;stroke-width:1.5;stroke-dasharray:4 3;cursor:help}.photoreflector{stroke:#ff8be8}@media(max-width:1180px){.workspace{grid-template-columns:minmax(430px,1fr) minmax(360px,.75fr)}.workspace>.metrics{grid-column:1;grid-row:1}.camera-panel{grid-column:1;grid-row:3}.board-section{grid-column:1;grid-row:3}.sequence-section{grid-column:1;grid-row:4}.history-section{grid-column:1;grid-row:2}.graph-stack{grid-column:2;grid-row:1 / span 4}}@media(max-width:900px){.workspace{grid-template-columns:1fr;grid-template-rows:auto}.workspace>.metrics,.camera-panel,.graph-stack,.history-section,.board-section,.sequence-section{grid-column:1;grid-row:auto;width:100%}.workspace>.metrics{grid-template-columns:repeat(auto-fit,minmax(122px,1fr))}.history-section{min-height:0}.history-section .scroll{height:240px;max-height:240px}.camera-image{height:260px}}</style>"
 "<style>.camera-image{height:220px}.camera-panel,.board-section{align-self:stretch}.history-section{min-height:590px}.history-section .scroll{height:535px}.sequence-section{align-self:start}.sequence-section>.head{cursor:pointer;user-select:none}.sequence-section>.head h2:after{content:'  ▸';color:#9eb0c0}.sequence-section.sequence-expanded>.head h2:after{content:'  ▾'}.sequence-section:not(.sequence-expanded)>:not(.head){display:none}.graph-charts{gap:4px}.graph-charts .section{padding:6px}.graph-charts .head{margin-bottom:3px}.gyroangle{stroke:#f2b35a}.sequence-burst{display:grid;grid-template-columns:auto minmax(80px,1fr) minmax(70px,1fr) auto;gap:6px;align-items:center;margin-top:9px;padding-top:8px;border-top:1px solid #293f53;font-size:.78rem}.sequence-burst input{min-width:0;width:100%;background:#182838;border:1px solid #38546d;color:#e8f0f7;border-radius:6px;padding:6px;font:inherit;font-size:.8rem}.sequence-burst label{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px;color:#9eb0c0}</style>"
 "<div class=\"status\"><span id=\"dot\" class=\"dot disconnected\"></span><span id=\"status\">Starting...</span></div><div class=\"workspace\"><section id=\"metrics\" class=\"metrics\"></section>"
-"<section class=\"section camera-panel\"><div class=\"head\"><h2>Camera gallery</h2><span id=\"camera-name\" class=\"meta\">No image received</span></div><div class=\"camera-content\"><img id=\"camera-image\" class=\"camera-image\" alt=\"OV7675 capture\" hidden><div class=\"camera-tools\"><span id=\"camera-count\" class=\"meta\">No saved images</span><div class=\"camera-nav\"><button id=\"camera-prev\" type=\"button\" title=\"Previous image (Left Arrow)\">&lt;</button><button id=\"camera-next\" type=\"button\" title=\"Next image (Right Arrow)\">&gt;</button><button id=\"camera-latest\" type=\"button\">Latest</button></div><span class=\"meta\">CSV replay: use Load images if the BMP files are not in this server's captures folder.</span></div></div></section>"
+"<section class=\"section camera-panel\"><div class=\"head\"><h2>Camera gallery</h2><span id=\"camera-name\" class=\"meta\">No image received</span></div><div class=\"camera-content\"><img id=\"camera-image\" class=\"camera-image\" alt=\"OV7675 capture\" hidden><div class=\"camera-tools\"><span id=\"camera-count\" class=\"meta\">No saved images</span><div class=\"camera-nav\"><button id=\"camera-prev\" type=\"button\" title=\"Previous image (Left Arrow)\">&lt;</button><button id=\"camera-next\" type=\"button\" title=\"Next image (Right Arrow)\">&gt;</button><button id=\"camera-latest\" type=\"button\">Latest</button></div><span class=\"meta\">Colour JPEG frames are saved and displayed directly. Older RGB565/RLE captures remain supported. For CSV replay, load image files if they are not in this server's captures folder.</span></div></div></section>"
 "<aside class=\"graph-stack\"><section class=\"section graph-range\"><div class=\"head\" style=\"margin:0\"><h2>Graph range</h2><div style=\"display:flex;gap:9px;align-items:center;flex-wrap:wrap\"><input id=\"graph-window\" type=\"range\" min=\"0\" max=\"0\" value=\"0\" style=\"width:min(28vw,340px)\"><span id=\"graph-window-label\" class=\"meta\">Live: latest 60 seconds</span><button id=\"graph-latest\" type=\"button\">Latest</button></div></div></section>"
 "<section class=\"charts graph-charts\"><article class=\"section\"><div class=\"head\"><h2>Gyro Z</h2><span class=\"meta\">auto scale</span></div><svg id=\"gyro-chart\" class=\"chart\" viewBox=\"0 0 720 170\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Gyro angle</h2><span class=\"meta\">auto scale</span></div><svg id=\"gyro-angle-chart\" class=\"chart\" viewBox=\"0 0 720 170\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Photodiode ADC</h2><span class=\"meta\">auto scale</span></div><svg id=\"pd-chart\" class=\"chart\" viewBox=\"0 0 720 170\"></svg></article><article class=\"section\"><div class=\"head\"><h2>Photoreflector</h2><span class=\"meta\">auto scale</span></div><svg id=\"photoreflector-chart\" class=\"chart\" viewBox=\"0 0 720 170\"></svg></article></section></aside>"
 "<section class=\"section history-section\"><div class=\"head\"><h2 id=\"history-title\">Command history</h2><div class=\"actions\"><span id=\"count\" class=\"meta\"></span><button id=\"history-mode\" type=\"button\">Show all history</button></div></div><div class=\"scroll\"><table><thead id=\"history-head\"><tr><th>Received</th><th>Direction / message</th></tr></thead><tbody id=\"rows\"></tbody></table></div></section>"
@@ -115,10 +115,10 @@ static const char DASHBOARD_HTML[] =
 "function graphWindow(h){if(!h.length){graphStartTime=graphDisplayEndTime=0;$('graph-window').min=0;$('graph-window').max=0;$('graph-window').value=0;$('graph-window-label').textContent='No telemetry';return []}const times=h.map(clockMs),slider=$('graph-window'),live=graphEndTime===null;let index=h.length-1;if(!live){index=0;for(let i=0;i<times.length;i++){if(times[i]<=graphEndTime)index=i;else break}}graphDisplayEndTime=times[index];graphStartTime=graphDisplayEndTime-60000;slider.min=0;slider.max=h.length-1;slider.value=index;$('graph-window-label').textContent=live?'Live: latest 60 seconds':h[index].received_at+' : previous 60 seconds';return h.filter((v,i)=>i<=index&&times[i]>=graphStartTime)}"
 "function plot(id,h,series){const svg=$(id),W=720,H=250,L=58,R=18,T=18,B=35,range=chartRanges[id]||[0,1],lo=range[0],hi=range[1],clamp=v=>Math.max(lo,Math.min(hi,v)),px=v=>L+(W-L-R)*Math.max(0,Math.min(1,(clockMs(v)-graphStartTime)/60000)),py=v=>T+(H-T-B)*(1-(clamp(v)-lo)/(hi-lo));let grid='';for(let i=0;i<5;i++){const y=T+(H-T-B)*i/4,value=hi-(hi-lo)*i/4,x=L+(W-L-R)*i/4,age=60-i*15;grid+='<line class=\\\"grid\\\" x1=\\\"'+L+'\\\" x2=\\\"'+(W-R)+'\\\" y1=\\\"'+y+'\\\" y2=\\\"'+y+'\\\"/><text class=\\\"axis\\\" x=\\\"3\\\" y=\\\"'+(y+4)+'\\\">'+value.toFixed(id==='temp-chart'||id==='gyro-chart'?1:0)+'</text><line class=\\\"grid\\\" x1=\\\"'+x+'\\\" x2=\\\"'+x+'\\\" y1=\\\"'+T+'\\\" y2=\\\"'+(H-B)+'\\\"/><text class=\\\"axis\\\" text-anchor=\\\"middle\\\" x=\\\"'+x+'\\\" y=\\\"'+(H-10)+'\\\">'+(age?' -'+age+'s':'now')+'</text>'}const paths=series.map(s=>{let started=false,path='';h.forEach(v=>{const n=s[1](v);if(num(n)){path+=(started?'L':'M')+px(v).toFixed(1)+','+py(n).toFixed(1);started=true}});return path?'<path class=\\\"line '+s[2]+'\\\" d=\\\"'+path+'\\\"/>':''}).join('');const markers=(current?.history||[]).filter(v=>v.type==='pc_command'&&clockMs(v)>=graphStartTime&&clockMs(v)<=graphDisplayEndTime).map(v=>{const x=px(v).toFixed(1),title=esc(v.received_at+' PC -> Pico > '+v.event_text);return '<g class=\\\"command-marker\\\"><title>'+title+'</title><rect x=\\\"'+(x-3)+'\\\" y=\\\"'+T+'\\\" width=\\\"6\\\" height=\\\"'+(H-T-B)+'\\\"/><line x1=\\\"'+x+'\\\" x2=\\\"'+x+'\\\" y1=\\\"'+T+'\\\" y2=\\\"'+(H-B)+'\\\"/></g>'}).join('');svg.innerHTML=grid+paths+markers+'<text class=\\\"axis\\\" x=\\\"'+L+'\\\" y=\\\"13\\\">'+formatGraphTime(graphStartTime)+'</text><text class=\\\"axis\\\" text-anchor=\\\"end\\\" x=\\\"'+(W-R)+'\\\" y=\\\"13\\\">'+formatGraphTime(graphDisplayEndTime)+'</text>'}"
 "let selectedCamera='',cameraFollowLatest=true;"
-"function cameraNames(d){const names=[];(d.history||[]).forEach(v=>{const m=/^Camera image saved: (camera_[A-Za-z0-9_.]+\\.bmp)$/.exec(v.event_text||'');if(m&&names.indexOf(m[1])<0)names.push(m[1])});return names}"
+"function cameraNames(d){const names=[];(d.history||[]).forEach(v=>{const m=/^Camera image saved: (camera_[A-Za-z0-9_.]+\\.(?:bmp|jpe?g))$/i.exec(v.event_text||'');if(m&&names.indexOf(m[1])<0)names.push(m[1])});return names}"
 "function renderCamera(d){const files=cameraNames(d),latest=d.latest_camera||'',image=$('camera-image');if(latest&&files.indexOf(latest)<0)files.push(latest);if(cameraFollowLatest&&latest)selectedCamera=latest;if(!selectedCamera||files.indexOf(selectedCamera)<0)selectedCamera=latest||files[files.length-1]||'';const name=selectedCamera,index=files.indexOf(name);$('camera-name').textContent=name||'No image received';$('camera-count').textContent=name?(index+1)+' / '+files.length:'No saved images';$('camera-prev').disabled=index<=0;$('camera-next').disabled=index<0||index>=files.length-1;if(!name){image.hidden=true;return}if(cameraShown!==name){cameraShown=name;image.onerror=()=>{if(cameraShown===name){$('camera-name').textContent=name+' (image file unavailable)';image.hidden=true}};image.src='/camera/'+encodeURIComponent(name);image.hidden=false}}"
 "function selectCamera(name,followLatest){selectedCamera=name||'';cameraFollowLatest=!!followLatest;if(current)renderCamera(current)}"
-"function decorateCameraHistory(){document.querySelectorAll('#rows tr.event td:last-child').forEach(cell=>{const m=/^Camera: Camera image saved: (camera_[A-Za-z0-9_.]+\\.bmp)$/.exec(cell.textContent.trim());if(!m||cell.dataset.cameraDecorated)return;const name=m[1];cell.dataset.cameraDecorated='1';cell.innerHTML='Camera: <button class=\\\"camera-link\\\" type=\\\"button\\\" data-camera-file=\\\"'+name+'\\\">Camera image saved: '+esc(name)+'</button>'})}"
+"function decorateCameraHistory(){document.querySelectorAll('#rows tr.event td:last-child').forEach(cell=>{const m=/^Camera: Camera image saved: (camera_[A-Za-z0-9_.]+\\.(?:bmp|jpe?g))$/i.exec(cell.textContent.trim());if(!m||cell.dataset.cameraDecorated)return;const name=m[1];cell.dataset.cameraDecorated='1';cell.innerHTML='Camera: <button class=\\\"camera-link\\\" type=\\\"button\\\" data-camera-file=\\\"'+name+'\\\">Camera image saved: '+esc(name)+'</button>'})}"
 "new MutationObserver(decorateCameraHistory).observe($('rows'),{childList:true});document.addEventListener('click',e=>{const button=e.target.closest('[data-camera-file]');if(button)selectCamera(button.dataset.cameraFile,false)});$('camera-prev').onclick=()=>{const files=current?cameraNames(current):[],index=files.indexOf(selectedCamera);if(index>0)selectCamera(files[index-1],false)};$('camera-next').onclick=()=>{const files=current?cameraNames(current):[],index=files.indexOf(selectedCamera);if(index>=0&&index<files.length-1)selectCamera(files[index+1],false)};$('camera-latest').onclick=()=>selectCamera(current?.latest_camera||'',true);"
 "document.addEventListener('keydown',e=>{const target=e.target,editing=target?.matches?.('input,textarea,select')||target?.isContentEditable;if(editing||e.altKey||e.ctrlKey||e.metaKey)return;if(e.key==='c'||e.key==='C'){e.preventDefault();sendCommand('CAPTURE')}else if(e.key==='ArrowLeft'){e.preventDefault();$('camera-prev').click()}else if(e.key==='ArrowRight'){e.preventDefault();$('camera-next').click()}});"
 "function plot(id,h,series){const svg=$(id),W=720,H=250,L=58,R=18,T=18,B=35,points=[];series.forEach(s=>h.forEach(v=>{const n=s[1](v);if(num(n))points.push(n)}));if(!points.length){svg.innerHTML='<text class=\\\"axis\\\" x=\\\"18\\\" y=\\\"32\\\">No data</text>';return}let low=Math.min(...points),high=Math.max(...points),minimum=id==='pd-chart'||id==='photoreflector-chart'?50:id==='gyro-chart'?5:.5,span=high-low;if(span<minimum){const middle=(high+low)/2;low=middle-minimum/2;high=middle+minimum/2;span=minimum}const padding=Math.max(span*.12,minimum*.1),lo=low-padding,hi=high+padding,digits=hi-lo<10?2:hi-lo<100?1:0,px=v=>L+(W-L-R)*Math.max(0,Math.min(1,(clockMs(v)-graphStartTime)/60000)),py=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));let grid='';for(let i=0;i<5;i++){const y=T+(H-T-B)*i/4,value=hi-(hi-lo)*i/4,x=L+(W-L-R)*i/4,age=60-i*15;grid+='<line class=\\\"grid\\\" x1=\\\"'+L+'\\\" x2=\\\"'+(W-R)+'\\\" y1=\\\"'+y+'\\\" y2=\\\"'+y+'\\\"/><text class=\\\"axis\\\" x=\\\"3\\\" y=\\\"'+(y+4)+'\\\">'+value.toFixed(digits)+'</text><line class=\\\"grid\\\" x1=\\\"'+x+'\\\" x2=\\\"'+x+'\\\" y1=\\\"'+T+'\\\" y2=\\\"'+(H-B)+'\\\"/><text class=\\\"axis\\\" text-anchor=\\\"middle\\\" x=\\\"'+x+'\\\" y=\\\"'+(H-10)+'\\\">'+(age?' -'+age+'s':'now')+'</text>'}const paths=series.map(s=>{let started=false,path='';h.forEach(v=>{const n=s[1](v);if(num(n)){path+=(started?'L':'M')+px(v).toFixed(1)+','+py(n).toFixed(1);started=true}});return path?'<path class=\\\"line '+s[2]+'\\\" d=\\\"'+path+'\\\"/>':''}).join('');const markers=(current?.history||[]).filter(v=>v.type==='pc_command'&&clockMs(v)>=graphStartTime&&clockMs(v)<=graphDisplayEndTime).map(v=>{const x=px(v).toFixed(1),title=esc(v.received_at+' PC -> Pico > '+v.event_text);return '<g class=\\\"command-marker\\\"><title>'+title+'</title><rect x=\\\"'+(x-3)+'\\\" y=\\\"'+T+'\\\" width=\\\"6\\\" height=\\\"'+(H-T-B)+'\\\"/><line x1=\\\"'+x+'\\\" x2=\\\"'+x+'\\\" y1=\\\"'+T+'\\\" y2=\\\"'+(H-B)+'\\\"/></g>'}).join('');svg.innerHTML=grid+paths+markers+'<text class=\\\"axis\\\" x=\\\"'+L+'\\\" y=\\\"13\\\">'+formatGraphTime(graphStartTime)+'</text><text class=\\\"axis\\\" text-anchor=\\\"end\\\" x=\\\"'+(W-R)+'\\\" y=\\\"13\\\">'+formatGraphTime(graphDisplayEndTime)+'</text>'}"
@@ -148,7 +148,7 @@ static const char DASHBOARD_HTML[] =
 "$('save').onclick=saveWithAngle;$('load').onchange=e=>e.target.files[0]&&loadWithAngle(e.target.files[0]);"
 "const compactPlot=plot;plot=(id,h,series)=>$(id)?compactPlot(id,h,series):undefined;const renderWithAngleHistory=render;render=function(d){renderWithAngleHistory(d);const telemetry=(d.history||[]).filter(v=>v.type==='telemetry'),windowed=graphWindow(telemetry);plot('gyro-chart',windowed,[['gyro',v=>v.gyro_z_dps,'gyro']]);plot('gyro-angle-chart',windowed,[['gyro angle',v=>v.gyro_z_angle_deg,'gyroangle']]);plot('pd-chart',windowed,[['pd0',v=>v.photodiode_adc?.[0],'pd0'],['pd1',v=>v.photodiode_adc?.[1],'pd1'],['pd2',v=>v.photodiode_adc?.[2],'pd2'],['pd3',v=>v.photodiode_adc?.[3],'pd3']]);plot('photoreflector-chart',windowed,[['photoreflector',v=>v.photoreflector_adc,'photoreflector']])};"
 "function submitCommandInput(){const input=$('command-input'),text=input.value.trim();if(text.toLowerCase()==='c'){input.value='';sendCommand('CAPTURE')}else sendCommand()}$('send-command').onclick=submitCommandInput;$('command-input').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();submitCommandInput()}};"
-"function cameraFileTime(name){const m=/^camera_(\\d{4})(\\d{2})(\\d{2})_(\\d{2})(\\d{2})(\\d{2})_(\\d{3})\\.bmp$/i.exec(String(name||''));return m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5]),Number(m[6]),Number(m[7])).getTime():NaN}const renderCameraWithInterval=renderCamera;renderCamera=function(d){renderCameraWithInterval(d);const files=cameraNames(d),latest=d.latest_camera||'';if(latest&&files.indexOf(latest)<0)files.push(latest);const index=files.indexOf(selectedCamera);if(index<0)return;let text=(index+1)+' / '+files.length;if(index>0){const elapsed=cameraFileTime(selectedCamera)-cameraFileTime(files[index-1]);if(Number.isFinite(elapsed)&&elapsed>=0)text+=' · +'+(elapsed/1000).toFixed(elapsed<10000?3:1)+' s since previous'}$('camera-count').textContent=text};"
+"function cameraFileTime(name){const m=/^camera_(\\d{4})(\\d{2})(\\d{2})_(\\d{2})(\\d{2})(\\d{2})_(\\d{3})\\.(?:bmp|jpe?g)$/i.exec(String(name||''));return m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5]),Number(m[6]),Number(m[7])).getTime():NaN}const renderCameraWithInterval=renderCamera;renderCamera=function(d){renderCameraWithInterval(d);const files=cameraNames(d),latest=d.latest_camera||'';if(latest&&files.indexOf(latest)<0)files.push(latest);const index=files.indexOf(selectedCamera);if(index<0)return;let text=(index+1)+' / '+files.length;if(index>0){const elapsed=cameraFileTime(selectedCamera)-cameraFileTime(files[index-1]);if(Number.isFinite(elapsed)&&elapsed>=0)text+=' · +'+(elapsed/1000).toFixed(elapsed<10000?3:1)+' s since previous'}$('camera-count').textContent=text};"
 "$('burst-start').onclick=()=>{if(sequenceRunning){setSequenceStatus('Stop the current sequence first');return}const interval=Number($('burst-interval').value),count=Math.floor(Number($('burst-count').value));if(!Number.isFinite(interval)||interval<0||!Number.isFinite(count)||count<1){setSequenceStatus('Set a non-negative interval and a count of 1 or more');return}const safeCount=Math.min(count,200);sequenceSteps=Array.from({length:safeCount},(_,i)=>({delay:i?interval:0,command:'c'}));renderSequence();sequenceIndex=0;sequenceRunning=true;setSequenceStatus('Capture burst: '+safeCount+' shots every '+interval+' s');runSequenceNext()};"
 "</script></body></html>";
 
@@ -434,6 +434,16 @@ static uint32_t crc32(const uint8_t *data, size_t size) {
     return ~crc;
 }
 
+static uint32_t crc32_update(uint32_t crc, const uint8_t *data, size_t size) {
+    while (size--) {
+        crc ^= *data++;
+        for (int i = 0; i < 8; ++i) {
+            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+        }
+    }
+    return crc;
+}
+
 /* Streaming decoder for the run-length format produced by
  * rle_encode_rgb565_chunk() on the Pico (pico_satellite_controller/rle.c):
  * a run of 2-128 identical pixels is packed as {0x80|(run-1), lo, hi};
@@ -460,6 +470,12 @@ typedef struct {
     size_t produced;
     bool overflowed;
 } rle_decoder_t;
+
+typedef enum {
+    IMAGE_ENCODING_RAW_RGB565,
+    IMAGE_ENCODING_RLE_RGB565,
+    IMAGE_ENCODING_JPEG,
+} image_encoding_t;
 
 static void rle_decoder_reset(rle_decoder_t *dec, uint8_t *out, size_t out_capacity) {
     dec->phase = RLE_DECODE_CONTROL;
@@ -531,7 +547,8 @@ static void put_le32(uint8_t *destination, uint32_t value) {
 }
 
 /* Images always go in captures beside the executable, not the launch folder. */
-static bool build_camera_path(char *path, size_t path_size, const SYSTEMTIME *now) {
+static bool build_camera_path(char *path, size_t path_size, const SYSTEMTIME *now,
+                              const char *extension) {
     char executable_path[MAX_PATH];
     char capture_directory[MAX_PATH];
     char *separator;
@@ -539,7 +556,7 @@ static bool build_camera_path(char *path, size_t path_size, const SYSTEMTIME *no
     DWORD length = GetModuleFileNameA(NULL, executable_path, sizeof(executable_path));
     int written;
 
-    if (!now || length == 0 || length >= sizeof(executable_path)) return false;
+    if (!now || !extension || length == 0 || length >= sizeof(executable_path)) return false;
     separator = strrchr(executable_path, '\\');
     if (!separator) return false;
     *separator = '\0';
@@ -551,20 +568,24 @@ static bool build_camera_path(char *path, size_t path_size, const SYSTEMTIME *no
     } else if (!(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
         return false;
     }
-    written = snprintf(path, path_size, "%s\\camera_%04u%02u%02u_%02u%02u%02u_%03u.bmp",
+    written = snprintf(path, path_size, "%s\\camera_%04u%02u%02u_%02u%02u%02u_%03u%s",
                        capture_directory, now->wYear, now->wMonth, now->wDay, now->wHour,
-                       now->wMinute, now->wSecond, now->wMilliseconds);
+                       now->wMinute, now->wSecond, now->wMilliseconds, extension);
     return written > 0 && (size_t)written < path_size;
 }
 
 /* Only files created by this program can be requested through /camera/<name>. */
 static bool camera_filename_is_safe(const char *filename) {
     size_t length;
+    const char *extension;
 
     if (!filename) return false;
     length = strlen(filename);
+    extension = strrchr(filename, '.');
     if (length <= strlen("camera_.bmp") || strncmp(filename, "camera_", 7) != 0 ||
-        strcmp(filename + length - 4, ".bmp") != 0) return false;
+        extension == NULL ||
+        (strcmp(extension, ".bmp") != 0 && strcmp(extension, ".jpg") != 0 &&
+         strcmp(extension, ".jpeg") != 0)) return false;
     for (size_t i = 0; i < length; ++i) {
         unsigned char c = (unsigned char)filename[i];
         if (!(isalnum(c) || c == '_' || c == '.')) return false;
@@ -598,7 +619,7 @@ static bool save_rgb565_bmp(const uint8_t *frame, unsigned width, unsigned heigh
     if (!frame || width == 0 || height == 0 || width > CAMERA_MAX_WIDTH ||
         height > CAMERA_MAX_HEIGHT) return false;
     GetLocalTime(&now);
-    if (!build_camera_path(filename, filename_size, &now)) return false;
+    if (!build_camera_path(filename, filename_size, &now, ".bmp")) return false;
     file = fopen(filename, "wb");
     if (!file) return false;
 
@@ -793,6 +814,7 @@ static void http_reply_board_image(SOCKET client) {
 static void http_reply_camera_path(SOCKET client, const char *path) {
     char header[256];
     char buffer[8192];
+    const char *content_type;
     long size;
     FILE *file;
 
@@ -803,9 +825,13 @@ static void http_reply_camera_path(SOCKET client, const char *path) {
     fseek(file, 0, SEEK_END);
     size = ftell(file);
     rewind(file);
+    content_type = strrchr(path, '.') != NULL &&
+                   (_stricmp(strrchr(path, '.'), ".jpg") == 0 ||
+                    _stricmp(strrchr(path, '.'), ".jpeg") == 0)
+                       ? "image/jpeg" : "image/bmp";
     if (size < 0 || snprintf(header, sizeof(header),
-                             "HTTP/1.1 200 OK\r\nContent-Type: image/bmp\r\nContent-Length: %ld\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-                             size) <= 0) {
+                             "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %ld\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+                             content_type, size) <= 0) {
         fclose(file);
         return;
     }
@@ -1038,6 +1064,52 @@ static DWORD WINAPI dummy_telemetry(LPVOID parameter) {
     return 0;
 }
 
+static void finish_camera_frame(const uint8_t *frame, size_t frame_size,
+                                unsigned width, unsigned height,
+                                uint32_t expected_crc) {
+    uint32_t actual_crc = crc32(frame, frame_size);
+
+    if (actual_crc != expected_crc) {
+        store_event(EVENT_CAMERA, "Camera image rejected: CRC mismatch");
+        printf("\nCamera image rejected: CRC mismatch (expected %08lx, got %08lx)\n",
+               (unsigned long)expected_crc, (unsigned long)actual_crc);
+        return;
+    }
+
+    char filename[MAX_PATH];
+    if (save_rgb565_bmp(frame, width, height, filename, sizeof(filename))) {
+        register_camera_file(filename);
+        printf("\nCamera image saved: %s\n", filename);
+    } else {
+        store_event(EVENT_CAMERA, "Camera image could not be saved");
+        printf("\nCamera image could not be saved\n");
+    }
+}
+
+static void finish_camera_jpeg(FILE **file, const char *filename,
+                               bool write_failed, bool check_crc,
+                               uint32_t expected_crc, uint32_t actual_crc) {
+    bool saved = !write_failed && file != NULL && *file != NULL &&
+                 fclose(*file) == 0;
+    if (file != NULL) *file = NULL;
+
+    if (!saved || (check_crc && actual_crc != expected_crc)) {
+        if (filename != NULL && filename[0] != '\0') DeleteFileA(filename);
+        if (check_crc && actual_crc != expected_crc) {
+            store_event(EVENT_CAMERA, "Camera JPEG rejected: CRC mismatch");
+            printf("\nCamera JPEG rejected: CRC mismatch (expected %08lx, got %08lx)\n",
+                   (unsigned long)expected_crc, (unsigned long)actual_crc);
+        } else {
+            store_event(EVENT_CAMERA, "Camera JPEG could not be saved");
+            printf("\nCamera JPEG could not be saved\n");
+        }
+        return;
+    }
+
+    register_camera_file(filename);
+    printf("\nCamera image saved: %s\n", filename);
+}
+
 static DWORD WINAPI receive_pico(LPVOID parameter) {
     SOCKET client = *(SOCKET *)parameter;
     uint8_t data[512];
@@ -1046,9 +1118,21 @@ static DWORD WINAPI receive_pico(LPVOID parameter) {
     uint8_t *frame = NULL; /* decoded (raw RGB565) pixel buffer, while receiving */
     unsigned frame_width = 0;
     unsigned frame_height = 0;
-    bool frame_is_stream = false;
+    size_t frame_size = 0;
+    size_t raw_bytes_received = 0;
+    image_encoding_t image_encoding = IMAGE_ENCODING_RAW_RGB565;
     uint32_t expected_crc = 0;
     rle_decoder_t decoder;
+    FILE *jpeg_file = NULL;
+    char jpeg_filename[MAX_PATH] = {0};
+    bool jpeg_receiving = false;
+    bool jpeg_write_failed = false;
+    bool jpeg_until_eoi = false;
+    bool jpeg_previous_was_ff = false;
+    size_t jpeg_size = 0;
+    size_t jpeg_bytes_received = 0;
+    uint32_t jpeg_expected_crc = 0;
+    uint32_t jpeg_crc_state = 0xffffffffu;
 
     for (;;) {
         int received = recv(client, (char *)data, sizeof(data), 0);
@@ -1058,30 +1142,92 @@ static DWORD WINAPI receive_pico(LPVOID parameter) {
             active_pico_client = INVALID_SOCKET;
             LeaveCriticalSection(&send_lock);
             free(frame);
+            if (jpeg_file != NULL) fclose(jpeg_file);
+            if (jpeg_receiving && jpeg_filename[0] != '\0') DeleteFileA(jpeg_filename);
             store_event(EVENT_CONNECTION, "Pico disconnected; waiting for reconnection");
             printf("\nPico disconnected\n");
             return 0;
         }
         for (int i = 0; i < received;) {
-            if (frame != NULL) {
-                rle_decoder_feed(&decoder, (uint8_t)received_data[i++]);
+            if (jpeg_receiving) {
+                if (jpeg_until_eoi) {
+                    while (i < received && jpeg_receiving) {
+                        uint8_t byte = data[i++];
+                        jpeg_crc_state = crc32_update(jpeg_crc_state, &byte, 1);
+                        ++jpeg_bytes_received;
+                        if (jpeg_file != NULL && fwrite(&byte, 1, 1, jpeg_file) != 1) {
+                            fclose(jpeg_file);
+                            jpeg_file = NULL;
+                            jpeg_write_failed = true;
+                        }
+                        if (jpeg_previous_was_ff && byte == 0xd9u) {
+                            finish_camera_jpeg(&jpeg_file, jpeg_filename,
+                                               jpeg_write_failed, false, 0, 0);
+                            jpeg_receiving = false;
+                            jpeg_filename[0] = '\0';
+                            printf("PC -> Pico > ");
+                            fflush(stdout);
+                            break;
+                        }
+                        jpeg_previous_was_ff = byte == 0xffu;
+                    }
+                    continue;
+                }
 
-                if (decoder.overflowed) {
-                    printf("\nImage decode error (corrupt or oversized stream)\n");
+                size_t available = (size_t)(received - i);
+                size_t needed = jpeg_size - jpeg_bytes_received;
+                size_t copied = available < needed ? available : needed;
+                jpeg_crc_state = crc32_update(jpeg_crc_state, data + i, copied);
+                if (jpeg_file != NULL &&
+                    fwrite(data + i, 1, copied, jpeg_file) != copied) {
+                    fclose(jpeg_file);
+                    jpeg_file = NULL;
+                    jpeg_write_failed = true;
+                }
+                jpeg_bytes_received += copied;
+                i += (int)copied;
+                if (jpeg_bytes_received != jpeg_size) continue;
+
+                finish_camera_jpeg(&jpeg_file, jpeg_filename, jpeg_write_failed,
+                                   true, jpeg_expected_crc, ~jpeg_crc_state);
+                jpeg_receiving = false;
+                jpeg_filename[0] = '\0';
+                printf("PC -> Pico > ");
+                fflush(stdout);
+                continue;
+            }
+
+            if (frame != NULL) {
+                if (image_encoding == IMAGE_ENCODING_RAW_RGB565) {
+                    size_t available = (size_t)(received - i);
+                    size_t needed = frame_size - raw_bytes_received;
+                    size_t copied = available < needed ? available : needed;
+                    memcpy(frame + raw_bytes_received, data + i, copied);
+                    raw_bytes_received += copied;
+                    i += (int)copied;
+                    if (raw_bytes_received != frame_size) continue;
+                    finish_camera_frame(frame, frame_size, frame_width, frame_height,
+                                        expected_crc);
                     free(frame);
                     frame = NULL;
                     printf("PC -> Pico > ");
                     fflush(stdout);
-                } else if (decoder.produced == decoder.out_capacity) {
-                    uint32_t actual_crc = crc32(frame, decoder.produced);
-                    if (actual_crc != expected_crc) {
-                        printf("\nImage CRC mismatch (expected %08lx, got %08lx)\n",
-                               (unsigned long)expected_crc,
-                               (unsigned long)actual_crc);
-                    } else {
-                        store_event(EVENT_CAMERA, "Camera image could not be saved");
-                        printf("\nCamera image could not be saved\n");
-                    }
+                    continue;
+                }
+
+                rle_decoder_feed(&decoder, data[i++]);
+                if (decoder.overflowed ||
+                    (decoder.produced == frame_size &&
+                     decoder.phase != RLE_DECODE_CONTROL)) {
+                    store_event(EVENT_CAMERA, "Camera image rejected: corrupt RLE stream");
+                    printf("\nCamera image rejected: corrupt RLE stream\n");
+                    free(frame);
+                    frame = NULL;
+                    printf("PC -> Pico > ");
+                    fflush(stdout);
+                } else if (decoder.produced == frame_size) {
+                    finish_camera_frame(frame, frame_size, frame_width, frame_height,
+                                        expected_crc);
                     free(frame);
                     frame = NULL;
                     printf("PC -> Pico > ");
@@ -1093,9 +1239,10 @@ static DWORD WINAPI receive_pico(LPVOID parameter) {
             char character = (char)data[i++];
             if (character == '\r') continue;
             if (character == '\n') {
-                unsigned width, height, bytes;
-                unsigned long crc;
+                unsigned width, height, size;
+                unsigned long received_crc;
                 char format[16];
+                line[line_length] = '\0';
                 int fields = sscanf(line,
                     "FRAME_STREAM,%u,%u,%15[^,],%u,%lx",
                     &width, &height, format, &size, &received_crc);
@@ -1106,27 +1253,56 @@ static DWORD WINAPI receive_pico(LPVOID parameter) {
                                     &received_crc);
                 }
                 if (fields == 5) {
-                    /* `size` is the frame's decompressed byte count (as it
-                     * always was); the Pico streams compressed bytes after
-                     * the header without announcing how many there will
-                     * be, so we just keep decoding until we have this many
-                     * decompressed bytes. */
-                    if (strcmp(format, "RGB565RLE") != 0 || width != 320u ||
-                        height != 240u || size != width * height * 2u ||
+                    bool is_rle = strcmp(format, "RGB565RLE") == 0;
+                    bool is_raw = strcmp(format, "RGB565") == 0;
+                    bool is_jpeg = strcmp(format, "JPEG") == 0;
+                    size_t expected_size = (size_t)width * height * 2u;
+                    if ((!is_rle && !is_raw && !is_jpeg) || width == 0 || height == 0 ||
+                        width > CAMERA_MAX_WIDTH || height > CAMERA_MAX_HEIGHT ||
+                        (!is_jpeg && (size != expected_size || size == 0)) ||
                         size > MAX_FRAME_BYTES) {
+                        store_event(EVENT_CAMERA, "Camera frame rejected: invalid image header");
                         printf("\nInvalid FRAME header: %s\n", line);
+                    } else if (is_jpeg) {
+                        SYSTEMTIME now;
+                        GetLocalTime(&now);
+                        jpeg_receiving = true;
+                        jpeg_write_failed = false;
+                        jpeg_until_eoi = size == 0;
+                        jpeg_previous_was_ff = false;
+                        jpeg_size = size;
+                        jpeg_bytes_received = 0;
+                        jpeg_expected_crc = (uint32_t)received_crc;
+                        jpeg_crc_state = 0xffffffffu;
+                        jpeg_filename[0] = '\0';
+                        if (!build_camera_path(jpeg_filename, sizeof(jpeg_filename), &now,
+                                               ".jpg") ||
+                            (jpeg_file = fopen(jpeg_filename, "wb")) == NULL) {
+                            jpeg_write_failed = true;
+                            store_event(EVENT_CAMERA, "Camera JPEG could not be opened for saving");
+                            printf("\nCamera JPEG will be discarded: cannot create output file\n");
+                        }
+                        printf("\nReceiving %s JPEG %ux%u (%s)...\n",
+                               stream_header ? "streamed" : "captured", width, height,
+                               jpeg_until_eoi ? "EOI-delimited" : "length-delimited");
                     } else {
                         frame = (uint8_t *)malloc(size);
                         if (frame == NULL) {
+                            store_event(EVENT_CAMERA, "Camera frame rejected: insufficient memory");
                             printf("\nNot enough memory for image\n");
                         } else {
                             frame_width = width;
                             frame_height = height;
-                            frame_is_stream = stream_header;
+                            frame_size = size;
+                            raw_bytes_received = 0;
+                            image_encoding = is_rle ? IMAGE_ENCODING_RLE_RGB565
+                                                    : IMAGE_ENCODING_RAW_RGB565;
                             expected_crc = (uint32_t)received_crc;
-                            rle_decoder_reset(&decoder, frame, size);
-                            printf("\nReceiving %ux%u image (%u bytes decoded)...\n",
-                                   width, height, size);
+                            if (is_rle) rle_decoder_reset(&decoder, frame, frame_size);
+                            printf("\nReceiving %s %ux%u %s image (%u bytes%s)...\n",
+                                   stream_header ? "streamed" : "captured", width, height,
+                                   is_rle ? "RGB565RLE" : "RGB565",
+                                   size, is_rle ? " decoded" : "");
                         }
                     }
                 } else {
