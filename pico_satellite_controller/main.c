@@ -17,6 +17,7 @@
 #include "icm42688.h"
 #include "servo.h"
 #include "camera.h"
+#include "rle.h"
 
 #define AP_SSID       "PICOW_DEMO"
 #define AP_PASSWORD   "pico-w-demo"
@@ -40,10 +41,12 @@ static volatile int capture_request = 0; /* 1=photo, 2=colour bars */
 static bool camera_streaming = false;
 static uint32_t camera_stream_interval_ms = CAMERA_STREAM_INTERVAL_MS;
 static absolute_time_t next_stream_capture;
+#define CAMERA_TRANSFER_CHUNK 4096u
+static uint8_t camera_transfer_chunk[CAMERA_TRANSFER_CHUNK];
 static struct {
     bool active;
     bool header_queued;
-    size_t offset;
+    size_t src_pos; /* bytes of the raw frame already RLE-encoded and sent */
     size_t header_length;
     char header[96];
 } camera_transfer;
@@ -82,49 +85,68 @@ static err_t send_text(struct tcp_pcb *pcb, const char *text) {
     return tcp_output(pcb);
 }
 
-/* Queue a captured frame gradually so the lwIP send buffer is never overrun. */
+static void finish_camera_transfer(void) {
+    camera_transfer.active = false;
+    if (camera_streaming) {
+        next_stream_capture = make_timeout_time_ms(camera_stream_interval_ms);
+    }
+    printf("Camera frame queued for PC\n");
+}
+
+/* Queue a captured frame gradually so the lwIP send buffer is never
+ * overrun. The body is RLE-compressed on the fly into a small fixed
+ * chunk buffer right before each send, so no second full-frame buffer
+ * is needed alongside the raw capture. */
 static void pump_camera_transfer(struct tcp_pcb *pcb) {
     if (!camera_transfer.active || pcb == NULL) return;
 
-    const void *data;
-    size_t remaining;
     if (!camera_transfer.header_queued) {
-        data = camera_transfer.header;
-        remaining = camera_transfer.header_length;
-    } else {
-        data = camera_get_frame() + camera_transfer.offset;
-        remaining = camera_get_frame_size() - camera_transfer.offset;
+        size_t remaining = camera_transfer.header_length;
+        u16_t available = tcp_sndbuf(pcb);
+        if (available == 0 || available < remaining) return;
+
+        err_t err = tcp_write(pcb, camera_transfer.header, (u16_t)remaining,
+                              TCP_WRITE_FLAG_COPY);
+        if (err == ERR_MEM) return;
+        if (err != ERR_OK) {
+            printf("camera tcp_write failed: %d\n", err);
+            camera_transfer.active = false;
+            return;
+        }
+        camera_transfer.header_queued = true;
+        tcp_output(pcb);
+        return;
     }
 
     u16_t available = tcp_sndbuf(pcb);
     if (available == 0) return;
-    if (!camera_transfer.header_queued && available < remaining) return;
-    size_t chunk = remaining;
-    if (chunk > available) chunk = available;
-    if (chunk > 4096) chunk = 4096;
+    size_t out_cap = available < CAMERA_TRANSFER_CHUNK ? available
+                                                        : CAMERA_TRANSFER_CHUNK;
 
-    err_t err = tcp_write(pcb, data, (u16_t)chunk, TCP_WRITE_FLAG_COPY);
+    size_t next_pos = camera_transfer.src_pos;
+    size_t chunk_len = rle_encode_rgb565_chunk(
+        camera_get_frame(), camera_get_frame_size(), &next_pos,
+        camera_transfer_chunk, out_cap);
+
+    if (chunk_len == 0) {
+        if (next_pos >= camera_get_frame_size()) finish_camera_transfer();
+        return;
+    }
+
+    err_t err = tcp_write(pcb, camera_transfer_chunk, (u16_t)chunk_len,
+                          TCP_WRITE_FLAG_COPY);
     if (err == ERR_MEM) return;
     if (err != ERR_OK) {
         printf("camera tcp_write failed: %d\n", err);
         camera_transfer.active = false;
         return;
     }
-
-    if (!camera_transfer.header_queued) {
-        camera_transfer.header_queued = true;
-    } else {
-        camera_transfer.offset += chunk;
-        if (camera_transfer.offset == camera_get_frame_size()) {
-            camera_transfer.active = false;
-            if (camera_streaming) {
-                next_stream_capture =
-                    make_timeout_time_ms(camera_stream_interval_ms);
-            }
-            printf("Camera frame queued for PC\n");
-        }
-    }
+    camera_transfer.src_pos = next_pos;
     tcp_output(pcb);
+
+    if (camera_transfer.src_pos >= camera_get_frame_size()) {
+        finish_camera_transfer();
+    }
 }
 
 static void process_capture_request(void) {
@@ -160,15 +182,20 @@ static void process_capture_request(void) {
         return;
     }
 
-    const uint8_t *frame = camera_get_frame();
+    /* The header carries the frame's *decompressed* size and the CRC of
+     * the raw pixels, exactly as before RLE was added: the receiver
+     * doesn't need to know the compressed length up front, since it
+     * just keeps decoding incoming bytes until it has produced that many
+     * decompressed bytes. */
+    const uint8_t *raw_frame = camera_get_frame();
     camera_transfer.header_length = (size_t)snprintf(
         camera_transfer.header, sizeof(camera_transfer.header),
-        "%s,%u,%u,RGB565,%u,%08lx\n",
+        "%s,%u,%u,RGB565RLE,%u,%08lx\n",
         stream_frame ? "FRAME_STREAM" : "FRAME",
         CAMERA_WIDTH, CAMERA_HEIGHT, (unsigned int)camera_get_frame_size(),
-        (unsigned long)crc32(frame, camera_get_frame_size()));
+        (unsigned long)crc32(raw_frame, camera_get_frame_size()));
     camera_transfer.header_queued = false;
-    camera_transfer.offset = 0;
+    camera_transfer.src_pos = 0;
     camera_transfer.active = true;
 }
 

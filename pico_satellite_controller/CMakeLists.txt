@@ -45,7 +45,8 @@ add_executable(pico_satellite_controller
         photodiode.c
         photoreflector.c
         servo.c
-        camera.c)
+        camera.c
+        rle.c)
 
 pico_generate_pio_header(pico_satellite_controller
         ${CMAKE_CURRENT_LIST_DIR}/camera_capture.pio)
