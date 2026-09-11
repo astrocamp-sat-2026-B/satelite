@@ -249,6 +249,90 @@ static uint32_t crc32(const uint8_t *data, size_t size) {
     return ~crc;
 }
 
+/* Streaming decoder for the run-length format produced by
+ * rle_encode_rgb565_chunk() on the Pico (pico_satellite_controller/rle.c):
+ * a run of 2-128 identical pixels is packed as {0x80|(run-1), lo, hi};
+ * otherwise up to 128 pixels are stored literally as {count-1, pixel...}.
+ *
+ * The Pico streams compressed bytes without ever announcing the total
+ * compressed length, so this decoder is fed one byte at a time (see
+ * rle_decoder_feed below) and the caller just watches `produced` reach
+ * the known decompressed frame size. */
+typedef enum {
+    RLE_DECODE_CONTROL = 0,
+    RLE_DECODE_RUN_LO,
+    RLE_DECODE_RUN_HI,
+    RLE_DECODE_LITERAL,
+} rle_decode_phase_t;
+
+typedef struct {
+    rle_decode_phase_t phase;
+    size_t run_pixels_remaining; /* RLE_DECODE_RUN_HI: pixels left to expand */
+    size_t literal_bytes_remaining;
+    uint8_t run_lo;
+    uint8_t *out;
+    size_t out_capacity;
+    size_t produced;
+    bool overflowed;
+} rle_decoder_t;
+
+static void rle_decoder_reset(rle_decoder_t *dec, uint8_t *out, size_t out_capacity) {
+    dec->phase = RLE_DECODE_CONTROL;
+    dec->run_pixels_remaining = 0;
+    dec->literal_bytes_remaining = 0;
+    dec->run_lo = 0;
+    dec->out = out;
+    dec->out_capacity = out_capacity;
+    dec->produced = 0;
+    dec->overflowed = false;
+}
+
+/* Feeds one compressed byte into the decoder. Sets dec->overflowed if the
+ * stream would produce more than out_capacity bytes (a framing bug or
+ * transmission corruption), after which the frame should be discarded. */
+static void rle_decoder_feed(rle_decoder_t *dec, uint8_t byte) {
+    if (dec->overflowed) return;
+
+    switch (dec->phase) {
+    case RLE_DECODE_CONTROL:
+        if (byte & 0x80u) {
+            dec->run_pixels_remaining = (size_t)(byte & 0x7fu) + 1u;
+            dec->phase = RLE_DECODE_RUN_LO;
+        } else {
+            dec->literal_bytes_remaining = ((size_t)(byte & 0x7fu) + 1u) * 2u;
+            dec->phase = RLE_DECODE_LITERAL;
+        }
+        break;
+    case RLE_DECODE_RUN_LO:
+        dec->run_lo = byte;
+        dec->phase = RLE_DECODE_RUN_HI;
+        break;
+    case RLE_DECODE_RUN_HI: {
+        size_t bytes_needed = dec->run_pixels_remaining * 2u;
+        if (dec->produced + bytes_needed > dec->out_capacity) {
+            dec->overflowed = true;
+            break;
+        }
+        for (size_t k = 0; k < dec->run_pixels_remaining; ++k) {
+            dec->out[dec->produced++] = dec->run_lo;
+            dec->out[dec->produced++] = byte;
+        }
+        dec->phase = RLE_DECODE_CONTROL;
+        break;
+    }
+    case RLE_DECODE_LITERAL:
+        if (dec->produced + 1u > dec->out_capacity) {
+            dec->overflowed = true;
+            break;
+        }
+        dec->out[dec->produced++] = byte;
+        if (--dec->literal_bytes_remaining == 0) {
+            dec->phase = RLE_DECODE_CONTROL;
+        }
+        break;
+    }
+}
+
 static void put_le16(uint8_t *destination, uint16_t value) {
     destination[0] = (uint8_t)value;
     destination[1] = (uint8_t)(value >> 8);
@@ -359,13 +443,12 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
     char received_data[128];
     char line[256];
     size_t line_length = 0;
-    uint8_t *frame = NULL;
-    size_t frame_size = 0;
-    size_t frame_received = 0;
+    uint8_t *frame = NULL; /* decoded (raw RGB565) pixel buffer, while receiving */
     unsigned frame_width = 0;
     unsigned frame_height = 0;
     bool frame_is_stream = false;
     uint32_t expected_crc = 0;
+    rle_decoder_t decoder;
 
     for (;;) {
         int received = recv(client, received_data, sizeof(received_data), 0);
@@ -377,15 +460,16 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
 
         for (int i = 0; i < received;) {
             if (frame != NULL) {
-                size_t available = (size_t)(received - i);
-                size_t needed = frame_size - frame_received;
-                size_t copy_size = available < needed ? available : needed;
-                memcpy(frame + frame_received, received_data + i, copy_size);
-                frame_received += copy_size;
-                i += (int)copy_size;
+                rle_decoder_feed(&decoder, (uint8_t)received_data[i++]);
 
-                if (frame_received == frame_size) {
-                    uint32_t actual_crc = crc32(frame, frame_size);
+                if (decoder.overflowed) {
+                    printf("\nImage decode error (corrupt or oversized stream)\n");
+                    free(frame);
+                    frame = NULL;
+                    printf("PC -> Pico > ");
+                    fflush(stdout);
+                } else if (decoder.produced == decoder.out_capacity) {
+                    uint32_t actual_crc = crc32(frame, decoder.produced);
                     if (actual_crc != expected_crc) {
                         printf("\nImage CRC mismatch (expected %08lx, got %08lx)\n",
                                (unsigned long)expected_crc,
@@ -406,7 +490,6 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
                     }
                     free(frame);
                     frame = NULL;
-                    frame_received = 0;
                     printf("PC -> Pico > ");
                     fflush(stdout);
                 }
@@ -435,7 +518,12 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
                                     &received_crc);
                 }
                 if (fields == 5) {
-                    if (strcmp(format, "RGB565") != 0 || width != 320u ||
+                    /* `size` is the frame's decompressed byte count (as it
+                     * always was); the Pico streams compressed bytes after
+                     * the header without announcing how many there will
+                     * be, so we just keep decoding until we have this many
+                     * decompressed bytes. */
+                    if (strcmp(format, "RGB565RLE") != 0 || width != 320u ||
                         height != 240u || size != width * height * 2u ||
                         size > MAX_FRAME_BYTES) {
                         printf("\nInvalid FRAME header: %s\n", line);
@@ -447,10 +535,9 @@ static DWORD WINAPI receive_from_pico(LPVOID parameter) {
                             frame_width = width;
                             frame_height = height;
                             frame_is_stream = stream_header;
-                            frame_size = size;
-                            frame_received = 0;
                             expected_crc = (uint32_t)received_crc;
-                            printf("\nReceiving %ux%u image (%u bytes)...\n",
+                            rle_decoder_reset(&decoder, frame, size);
+                            printf("\nReceiving %ux%u image (%u bytes decoded)...\n",
                                    width, height, size);
                         }
                     }

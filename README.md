@@ -50,6 +50,7 @@ Pico W（AP / TCPクライアント: 192.168.4.1）
 | `pico_satellite_controller/icm42688.c` | ICM-42688のI2C初期化とZ軸角速度取得を行うドライバ。 |
 | `pico_satellite_controller/photoreflector.c` | MCP3008のCH4からLBR-127HLDの生ADC値を読み取る。 |
 | `pico_satellite_controller/camera.c` | OV7675を初期化し、QVGA RGB565画像をPIO/DMAで撮影する。 |
+| `pico_satellite_controller/rle.c` | 撮影した画像をロスレスRLE圧縮し、送信チャンクへ逐次書き出す。 |
 | `pico_satellite_controller/CMakeLists.txt` | Pico SDK向けビルド設定。Wi-Fi/lwIP、ADC、I2C、乱数、USB Serial Monitorを有効にする。 |
 | `pico_satellite_controller/lwipopts.h` | Picoで使用するlwIP（TCP/IPスタック）の設定。 |
 | `pico_satellite_controller/pico_sdk_import.cmake` | インストール済みのPico SDKをCMakeから読み込むためのファイル。 |
@@ -219,22 +220,31 @@ camera_YYYYMMDD_HHMMSS_mmm.bmp
 
 ### 画像転送プロトコル
 
-Picoは撮影後、改行で終わるヘッダーとRGB565バイナリを連続送信します。
+Picoは撮影後、改行で終わるヘッダーと圧縮済みバイナリを連続送信します。
+画像は色情報を保ったまま`pico_satellite_controller/rle.c`のロスレスRLE
+（同一画素の連続をランレングス圧縮）で圧縮してから送るため、単色部分の
+多い画像ほど転送バイト数が減り、テレメトリ送信を止める時間も短くなります。
+RP2040のSRAMは264KBしかなく生フレームと同じ大きさの圧縮バッファは持てないため、
+送信のたびに4KB程度のチャンクへその場で圧縮してストリーミング送信します。
 
 ```text
-FRAME,320,240,RGB565,153600,1234abcd\n
-<153600 bytes RGB565>
+FRAME,320,240,RGB565RLE,153600,1234abcd\n
+<圧縮されたRGB565RLEバイト列（可変長）>
 ```
 
 連続撮影中は、各画像を次のヘッダーで送ります。
 
 ```text
-FRAME_STREAM,320,240,RGB565,153600,1234abcd\n
-<153600 bytes RGB565>
+FRAME_STREAM,320,240,RGB565RLE,153600,1234abcd\n
+<圧縮されたRGB565RLEバイト列（可変長）>
 ```
 
-末尾の値は8桁16進のCRC32です。TCPの受信境界には依存せず、Windows側は
-ヘッダーのサイズに従って画像データを復元します。
+ヘッダーの数値は従来どおり**展開後**の画像バイト数（320×240×2＝153600固定）、
+末尾の値は展開後の生RGB565ピクセルに対する8桁16進のCRC32です。圧縮後の
+バイト数はPico側でも事前にはわからないため送信しません。Windows側は
+ヘッダーを見た後、届いたバイト列を`rle_decoder_feed()`で1バイトずつ
+逐次復元し、展開後のバイト数が153600に達した時点でフレーム完了とみなして
+CRCを検証し、BMPとして保存します。
 
 ## テレメトリ受信とLED
 
