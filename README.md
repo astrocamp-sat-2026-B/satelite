@@ -1,283 +1,351 @@
-# Pico W AP TCP通信デモ
+# Pico W 模擬衛星コントローラー
 
-Pico WをWi-Fiアクセスポイント（AP）として動かし、接続したWindows PCとTCPで双方向通信する最小構成です。
+Raspberry Pi Pico W をアクセスポイント兼衛星コントローラーとして動かし、Windows PC からリアクションホイール、姿勢、光センサー、カメラを監視・操作するプロジェクトです。
 
-- PCから任意のコマンド文字列を送信できる
-- PCから任意のタイミングでOV7675を撮影し、画像をBMPとして保存できる
-- Picoは受信した文字列を`PICO_REPLY:`付きで返信する
-- Picoは2秒ごとに疑似テレメトリをPCへ送信する
-- テレメトリ送信時にPico Wの内蔵LEDが約200 ms点灯する
+現在の統合ファームウェアは `pico_satellite_controller/` です。主な機能は次のとおりです。
 
-## 通信構成
+- Pico W の Wi-Fi AP と Windows PC 間の TCP 通信
+- ICM-42688-P による姿勢推定（roll / pitch / 相対 yaw）
+- FS90R とタイヤを使ったリアクションホイールの手動回転・目標角旋回・姿勢保持
+- MCP3008 に接続した4面フォトダイオードとフォトリフレクタの計測
+- 光センサーの整列条件を使った自動撮影
+- OV7675 による 160 x 120 RGB565 撮影と CRC32 付き転送
+- Windows 上の Web ダッシュボード、CSV ログ、画像ギャラリー
+
+## システム構成
 
 ```text
-Windows PC（TCPサーバー: 192.168.4.2:4242）
-        ↑              ↓
-        └──── TCP ────┘
-Pico W（AP / TCPクライアント: 192.168.4.1）
+ブラウザー
+  http://localhost:8080
+          |
+          | HTTP
+          v
+Windows PC: pc_tcp_server.exe
+  Wi-Fi: 192.168.4.2
+          ^
+          | TCP 4242（Pico から接続）
+          |
+Pico W: 192.168.4.1
+  Wi-Fi AP / センサー取得 / 姿勢制御 / カメラ撮影
 ```
 
-| 項目 | 値 |
+| 項目 | 設定値 |
 | --- | --- |
 | SSID | `PICOW_DEMO` |
-| Password | `pico-w-demo` |
-| PicoのAP IPアドレス | `192.168.4.1` |
-| PCの固定IPアドレス | `192.168.4.2` |
+| パスワード | `pico-w-demo` |
+| Pico W の AP アドレス | `192.168.4.1` |
+| Windows PC の固定 IPv4 アドレス | `192.168.4.2` |
 | サブネットマスク | `255.255.255.0` |
-| TCPポート | `4242` |
+| Pico - PC TCP ポート | `4242` |
+| ダッシュボード HTTP ポート | `8080` |
+
+Pico W は TCP クライアント、Windows プログラムは TCP サーバーです。Pico は接続が切れた場合も `192.168.4.2:4242` への再接続を続けます。
+
+## 必要なもの
+
+### ハードウェア
+
+- Raspberry Pi Pico W
+- ICM-42688-P
+- FS90R 連続回転サーボとリアクションホイール
+- MCP3008、フォトダイオード4個、LBR-127HLD フォトリフレクタ
+- OV7675 カメラ
+- USB ケーブルと各基板に必要な電源
+
+### ソフトウェア
+
+- Windows 10 / 11（PC サーバーは Winsock と Windows WLAN API を使用）
+- Raspberry Pi Pico SDK、CMake、Ninja、ARM GCC
+- PC サーバーの再ビルド時は MinGW GCC
+- 姿勢制御の回帰試験を実行する場合は Node.js
+- 任意のモダンブラウザー
+
+Pico プロジェクトの VS Code 設定は Pico SDK `2.3.1`、ARM toolchain `15_2_Rel1`、Ninja `1.13.2` を前提に生成されています。
+
+## 配線
+
+| 機能 | Pico W | 接続先 |
+| --- | --- | --- |
+| カメラ D0 - D7 | GP0 - GP7 | OV7675 D0 - D7 |
+| サーボ PWM | GP11 | FS90R 信号線 |
+| カメラ SDA / SCL | GP14 / GP15 | OV7675 SCCB（I2C1） |
+| MCP3008 MISO / CS / CLK / MOSI | GP16 / GP17 / GP18 / GP19 | MCP3008 pin 12 / 10 / 13 / 11 |
+| IMU SDA / SCL | GP20 / GP21 | ICM-42688-P（I2C0、アドレス `0x69`） |
+| カメラ PCLK | GP22 | OV7675 PCLK |
+| カメラ HREF / VSYNC | GP26 / GP27 | OV7675 HREF / VSYNC |
+| カメラ XCLK | GP28 | OV7675 XCLK |
+
+MCP3008 の CH0 - CH3 を4個のフォトダイオード、CH4 をフォトリフレクタに使用します。MCP3008 の `VDD` / `VREF` は 3.3 V、`AGND` / `DGND` は GND へ接続します。
+
+> FS90R の電源は基板の設計に従って接続してください。Pico W の GPIO からサーボへ給電しないでください。また、サーボの個体差により 1500 us で完全停止しない場合があるため、自由回転試験の前に中立値を校正してください。
 
 ## ファイル構成
 
 ```text
 .
-├── README.md
-├── pc_tcp_server.c
-└── pico_satellite_controller/
-    ├── CMakeLists.txt
-    ├── pico_sdk_import.cmake
-    ├── lwipopts.h
-    ├── main.c
-    ├── icm42688.c
-    ├── icm42688.h
-    ├── .gitignore
-    └── .vscode/
+|-- README.md
+|-- pc_tcp_server.c                 Windows TCP/HTTPサーバーとダッシュボード
+|-- pc_tcp_server_dummy.c           実機不要のダミー実行用ラッパー
+|-- pc_tcp_server.exe               ビルド済みWindows実行ファイル
+|-- pico_satellite_controller/      現在の統合Pico Wファームウェア
+|   |-- main.c                      初期化、周期処理、TCP、コマンド、撮影
+|   |-- protocol.c/.h               改行区切り受信とテレメトリ生成
+|   |-- telemetry.c/.h              センサー・制御状態の収集
+|   |-- icm42688.c/.h               IMU取得と姿勢推定
+|   |-- angle_integrator.c/.h        相対yawの数値積分
+|   |-- attitude_control.c/.h       旋回・保持制御と異常監視
+|   |-- servo.c/.h                  GP11のFS90R PWM制御
+|   |-- photodiode.c/.h             MCP3008 CH0-CH3
+|   |-- photoreflector.c/.h         MCP3008 CH4
+|   |-- wheel_sensor.c/.h           マーカー周期からのrpm推定
+|   |-- sun_capture.c/.h            光条件による撮影トリガー
+|   |-- camera.c/.h                 OV7675 QQVGA RGB565撮影
+|   |-- camera_capture.pio          PIOカメラ入力
+|   |-- CMakeLists.txt
+|   |-- tests/slew_sils.mjs         1軸姿勢制御のSILS回帰試験
+|   `-- *.md                        姿勢推定・制御・カメラの技術資料
+|-- blink/                          320 x 240 USBシリアル式カメラ単体試験
+|-- captures/                       PCが保存した撮影画像
+`-- *.csv                           接続セッションごとのテレメトリログ
 ```
 
-| ファイル・フォルダー | 役割 |
-| --- | --- |
-| `pc_tcp_server.c` | Windows PCで動くTCPサーバー。キーボード入力をPicoへ送り、コマンド応答とテレメトリを表示する。 |
-| `pico_satellite_controller/main.c` | Pico Wで動く本体コード。AP開始、TCP接続、コマンド応答、テレメトリ送信、LED点滅を行う。 |
-| `pico_satellite_controller/icm42688.c` | ICM-42688のI2C初期化とZ軸角速度取得を行うドライバ。 |
-| `pico_satellite_controller/photoreflector.c` | MCP3008のCH4からLBR-127HLDの生ADC値を読み取る。 |
-| `pico_satellite_controller/camera.c` | OV7675を初期化し、QVGA RGB565画像をPIO/DMAで撮影する。 |
-| `pico_satellite_controller/rle.c` | 撮影した画像をロスレスRLE圧縮し、送信チャンクへ逐次書き出す。 |
-| `pico_satellite_controller/CMakeLists.txt` | Pico SDK向けビルド設定。Wi-Fi/lwIP、ADC、I2C、乱数、USB Serial Monitorを有効にする。 |
-| `pico_satellite_controller/lwipopts.h` | Picoで使用するlwIP（TCP/IPスタック）の設定。 |
-| `pico_satellite_controller/pico_sdk_import.cmake` | インストール済みのPico SDKをCMakeから読み込むためのファイル。 |
-| `pico_satellite_controller/.vscode/` | Raspberry Pi Pico VS Code拡張機能用のプロジェクト設定。 |
-| `pico_satellite_controller/.gitignore` | Picoプロジェクトのビルド生成物をGitの管理対象から外す設定。 |
+`jpeg_encoder.*`、`rle.*`、`third_party/JPEGENC/` は過去方式や互換検証用として残っていますが、現在の `pico_satellite_controller/CMakeLists.txt` のビルド対象ではありません。現在の Pico ファームウェアが送信する画像形式は無圧縮 `RGB565` です。PC サーバー側は旧 `RGB565RLE` / `JPEG` フレームも受信できます。
 
 ## ビルド
 
-### Pico W用UF2
+### Pico W ファームウェア
 
-1. VS Codeで`pico_satellite_controller`フォルダーを開きます。
-2. Raspberry Pi Pico拡張機能でBoardが`pico_w`であることを確認します。
-3. Buildを実行します。
-4. 成功すると、次のファイルが生成されます。
+VS Code の Raspberry Pi Pico 拡張機能を使う場合は、`pico_satellite_controller` フォルダーをプロジェクトとして開き、ボードに `pico_w` を指定して `Compile Project` を実行します。
 
-   ```text
-   pico_satellite_controller/build/pico_satellite_controller.uf2
-   ```
-
-### Windows PCサーバー
-
-プロジェクト直下で、MinGW gccを使ってビルドします。
+Pico SDK の環境変数とツールへの PATH が設定済みなら、コマンドラインでもビルドできます。
 
 ```powershell
-gcc -Wall -Wextra pc_tcp_server.c -o pc_tcp_server.exe -lws2_32 -lwlanapi
+cd pico_satellite_controller
+cmake -S . -B build -G Ninja
+cmake --build build
 ```
 
-## 実行手順
+生成物は次の場所です。
 
-### 1. Pico WへUF2を書き込む
+```text
+pico_satellite_controller/build/pico_satellite_controller.uf2
+```
 
-1. Pico WのBOOTSELボタンを押したままUSBでPCへ接続します。
-2. エクスプローラーに`RPI-RP2`ドライブが表示されたら、BOOTSELを離します。
-3. `pico_satellite_controller.uf2`を`RPI-RP2`ドライブ直下へコピーします。
-4. ドライブが自動的に消え、Picoが再起動します。
+### Windows PC サーバー
 
-### 2. PCをPicoのAPへ接続する
+リポジトリ直下で MinGW GCC を使います。
 
-1. PCのWi-Fiで`PICOW_DEMO`へ接続します。
-2. Wi-FiアダプターのIPv4設定を手動設定します。
+```powershell
+gcc -Wall -Wextra -std=c11 pc_tcp_server.c -o pc_tcp_server.exe -lws2_32 -lwlanapi
+```
 
-   ```text
-   IPアドレス: 192.168.4.2
-   サブネットマスク: 255.255.255.0
-   デフォルトゲートウェイ: 空欄
-   DNS: 空欄
-   ```
+実機なしでダッシュボードを確認する実行ファイルは次のように作成できます。
 
-### 3. PCサーバーを起動する
+```powershell
+gcc -Wall -Wextra -std=c11 pc_tcp_server_dummy.c -o pc_tcp_server_dummy.exe -lws2_32 -lwlanapi
+```
+
+## セットアップと起動
+
+### 1. Pico W へ書き込む
+
+1. BOOTSEL ボタンを押したまま Pico W を USB 接続します。
+2. `RPI-RP2` ドライブが表示されたら BOOTSEL を離します。
+3. `pico_satellite_controller.uf2` を `RPI-RP2` へコピーします。
+4. 自動再起動後、Pico W が `PICOW_DEMO` AP を開始します。
+
+電源投入直後は IMU の静止バイアス校正を行います。少なくとも最初の2秒間は、機体とホイールを動かさないでください。制御開始前にダッシュボードまたはテレメトリで `attitude_calibrated=1` を確認します。
+
+### 2. Windows PC を Pico W の AP へ接続する
+
+1. Windows の Wi-Fi から `PICOW_DEMO` へ接続します。
+2. その Wi-Fi アダプターの IPv4 を次のように手動設定します。
+
+```text
+IP address:       192.168.4.2
+Subnet mask:      255.255.255.0
+Default gateway:  空欄
+DNS:              空欄
+```
+
+### 3. PC サーバーを起動する
 
 ```powershell
 .\pc_tcp_server.exe
 ```
 
-正常に接続されると、次のように表示されます。
+起動後に Pico が接続すると、概ね次のように表示されます。
 
 ```text
-Signal dashboard: http://localhost:8080
-Waiting on TCP port 4242...
+Dashboard: http://localhost:8080
+Waiting on Pico TCP port 4242...
 Pico connected
-Pico -> PC: PICO_CONNECTED
+Auto-save session: MMDDHHMM.csv
 PC -> Pico >
 ```
 
-接続中は5秒ごとに、Windowsが測定したAPの受信信号品質も表示します。
+ブラウザーで <http://localhost:8080> を開きます。コンソールからもコマンドを入力でき、`/quit` で PC サーバーを終了します。
 
-```text
-Wi-Fi link: PICOW_DEMO, about -63 dBm, 74% (Good)
+### 実機なしで確認する
+
+次のどちらかで、2秒周期の疑似テレメトリと疑似カメラ画像を使えます。このモードでは TCP 4242 を開きません。
+
+```powershell
+.\pc_tcp_server.exe --dummy
+# または
+.\pc_tcp_server_dummy.exe
 ```
 
-| 表示 | 意味 |
+## Web ダッシュボード
+
+ダッシュボードには次の機能があります。
+
+- 稼働時間、温度、Gyro Z、相対 yaw、PD0 - PD3、フォトリフレクタ、Wi-Fi 品質、手動指令値の表示
+- Gyro Z、相対 yaw、フォトダイオード、フォトリフレクタの時系列グラフ
+- ホイール速度、相対旋回、中止、角度リセットの操作
+- 任意コマンドの送信、遅延付きコマンドシーケンス、連続撮影シーケンス
+- 撮影画像の表示とギャラリー移動
+- コマンド・応答履歴と全履歴の切り替え
+- CSV の保存・再読込、画像の再読込、HTML へのエクスポート
+
+ダッシュボードは最大2000件の履歴をメモリに保持し、1秒ごとに `/api/telemetry` を取得します。主な HTTP エンドポイントは次のとおりです。
+
+| メソッドとパス | 内容 |
 | --- | --- |
-| `dBm` | 0に近いほど強い。Windowsの品質値から換算した概算値。 |
-| `%` | Windows WLAN APIが返す信号品質（0〜100%）。 |
-| `Excellent` | 80%以上。非常に良好。 |
-| `Good` | 60〜79%。良好。 |
-| `Fair` | 40〜59%。通常利用可能。 |
-| `Weak` | 20〜39%。切断や速度低下に注意。 |
-| `Very weak` | 0〜19%。非常に弱い。 |
+| `GET /` | ダッシュボード |
+| `GET /api/telemetry` | 最新値、接続状態、履歴の JSON |
+| `POST /api/command` | 本文の1行を Pico へ送信 |
+| `GET /camera/<filename>` | 保存済み画像 |
+| `GET /camera/latest.bmp` | 最新画像 |
+| `GET /board-image.png` | フォトダイオード配置図 |
 
-PicoはAPとして動作するため、Pico SDKの公開RSSI取得API（STA専用）は
-利用できません。この表示は、実際にデータを受け取るWindows側から見た
-`PICOW_DEMO`の電波強度です。テレメトリにも`wifi_mode=AP`を含めます。
+配置図は `pc_tcp_server.c` の `BOARD_IMAGE_PATH` にある PNG を読み込みます。別の PC で使用するときは、この定数を実在する画像パスへ変更して PC サーバーを再ビルドしてください。画像がなくてもテレメトリ取得と操作には影響しません。
 
-### ブラウザで通信強度を確認する
+## コマンド
 
-PCサーバーの起動後、ブラウザで `http://localhost:8080` を開きます。
-`viewer`ブランチと同様にWindows側のHTTPサーバーが測定値をJSONで配信し、
-画面が1秒ごとに取得します。SSID、信号品質（%）、推定RSSI（dBm）、
-5段階評価、色付き強度バー、最終測定からの経過時間を確認できます。
-測定自体は5秒間隔です。
+すべて ASCII の1行として送信し、改行で終端します。Web 画面または PC サーバーのコンソールから入力できます。
 
-外部の画面やプログラムから利用する場合は、
-`GET http://localhost:8080/api/signal` で次のJSONを取得できます。
+### 手動ホイール制御
 
-```json
-{
-  "available": true,
-  "ssid": "PICOW_DEMO",
-  "quality_percent": 74,
-  "estimated_dbm": -63,
-  "rating": "Good",
-  "updated_age_s": 0.4,
-  "sample_interval_s": 5.0
-}
-```
-
-## コマンド送信
-
-`PC -> Pico >`の後に文字列を入力してEnterを押します。
-
-```text
-PC -> Pico > hello
-Pico -> PC: PICO_REPLY: hello
-```
-
-PicoのUSB Serial Monitorには、Picoが受信した値が表示されます。
-
-```text
-PC -> Pico: hello
-```
-
-終了する場合は、PC側で`/quit`を入力します。
-
-### サーボとカメラのコマンド
-
-| 入力 | 動作 |
-| --- | --- |
-| `-100` ～ `100` | 連続回転サーボの速度を指定する（負数は逆転、0は停止）。値は700～2300 µsのPWMパルス幅へ線形変換され、受信時に即時反映される。 |
-| `SET_VALUE,-100` ～ `SET_VALUE,100` | 上記と同じ。 |
-| `GET_VALUE` | 現在のサーボ速度を取得する。 |
-| `CAPTURE` | OV7675で通常画像を1枚撮影し、Windowsへ送る（動画停止中のみ）。 |
-| `CAPTURE_TEST` | カラーバーを有効にして1枚撮影し、Windowsへ送る（動画停止中のみ）。 |
-| `STREAM_START` | 0.5秒間隔で連続撮影を開始する。 |
-| `STREAM_START,500` | 指定した間隔（250～10000 ms）で連続撮影を開始する。 |
-| `STREAM_STOP` | 連続撮影を停止する。 |
-
-PCとの接続直後は、通常画像の連続撮影が0.5秒間隔で自動的に始まります。
-`http://localhost:8080` を開くと、受信した最新画像が4:3の比率を保ったまま
-自動更新され、動画のように確認できます。連続撮影中の画像は
-`camera_live.bmp`へ上書きするため、画像ファイルが無制限に増えません。
-通常の`CAPTURE`で撮影した静止画は、従来どおり日時付きのファイルへ保存します。
-
-最初の撮影時にカメラを自動初期化します。Windows側は受信データのCRC32を
-検証し、成功するとサーバーを起動したフォルダーへ次の名前で保存します。
-
-```text
-camera_YYYYMMDD_HHMMSS_mmm.bmp
-```
-
-転送中はテレメトリ送信を一時停止し、画像バイナリとテキストメッセージが
-混ざらないようにします。撮影中または転送中に再度撮影を要求すると
-`ERROR,CAMERA_BUSY`が返ります。
-
-### OV7675の配線
-
-| OV7675 | Pico W |
-| --- | --- |
-| D0～D7 | GP0～GP7 |
-| SDA / SCL | GP14 / GP15（I2C1） |
-| PCLK | GP22 |
-| HREF / VSYNC | GP26 / GP27 |
-| XCLK | GP28 |
-| VCC / GND | 3.3V / GND |
-
-カメラはPIO0のステートマシン1個とDMAチャンネル1個を使用します。
-
-### 画像転送プロトコル
-
-Picoは撮影後、改行で終わるヘッダーと圧縮済みバイナリを連続送信します。
-画像は色情報を保ったまま`pico_satellite_controller/rle.c`のロスレスRLE
-（同一画素の連続をランレングス圧縮）で圧縮してから送るため、単色部分の
-多い画像ほど転送バイト数が減り、テレメトリ送信を止める時間も短くなります。
-RP2040のSRAMは264KBしかなく生フレームと同じ大きさの圧縮バッファは持てないため、
-送信のたびに4KB程度のチャンクへその場で圧縮してストリーミング送信します。
-
-```text
-FRAME,320,240,RGB565RLE,153600,1234abcd\n
-<圧縮されたRGB565RLEバイト列（可変長）>
-```
-
-連続撮影中は、各画像を次のヘッダーで送ります。
-
-```text
-FRAME_STREAM,320,240,RGB565RLE,153600,1234abcd\n
-<圧縮されたRGB565RLEバイト列（可変長）>
-```
-
-ヘッダーの数値は従来どおり**展開後**の画像バイト数（320×240×2＝153600固定）、
-末尾の値は展開後の生RGB565ピクセルに対する8桁16進のCRC32です。圧縮後の
-バイト数はPico側でも事前にはわからないため送信しません。Windows側は
-ヘッダーを見た後、届いたバイト列を`rle_decoder_feed()`で1バイトずつ
-逐次復元し、展開後のバイト数が153600に達した時点でフレーム完了とみなして
-CRCを検証し、BMPとして保存します。
-
-## テレメトリ受信とLED
-
-Picoは接続中、2秒ごとに次の形式でテレメトリを送ります。
-
-```text
-Telemetry <- Pico: wifi_mode=AP,uptime_s=12,temp_c=26.45,random=381,command_value=50,gyro_z_dps=1.25,gyro_z_angle_deg=45.30,photodiode_adc=123|234|345|456,photoreflector_adc=512
-```
-
-| 項目 | 内容 |
-| --- | --- |
-| `uptime_s` | Picoが起動してからの累積秒数。再起動時に0へ戻る。 |
-| `temp_c` | RP2040の内蔵温度センサ値。目安として利用する。 |
-| `random` | 0〜999の乱数。通信データが更新されていることを確認するための疑似値。 |
-| `photoreflector_adc` | LBR-127HLDを接続したMCP3008 CH4の生値（0〜1023）。通信・フレーミング異常時は`NA`。 |
-
-### LBR-127HLD / MCP3008の配線
-
-LBR-127HLDの信号はMAIN基板上でMCP3008のCH4（ネット名`REF`）へ接続します。
-Pico WとMCP3008の接続は次のとおりです。
-
-| 信号 | Pico W GPIO | MCP3008 pin |
+| コマンド | 内容 | 応答例 |
 | --- | --- | --- |
-| MISO / DOUT | GP16 | pin12 |
-| CS / SHDN | GP17 | pin10 |
-| CLK | GP18 | pin13 |
-| MOSI / DIN | GP19 | pin11 |
-| VDD / VREF | 3.3V | pin16 / pin15 |
-| GND | GND | pin9 / pin14 |
+| `SET_VALUE,-100` - `SET_VALUE,100` | FS90R 速度指令を即時反映 | `ACK,SET_VALUE,-100` |
+| `-100` - `100` | `SET_VALUE` の短縮形 | `ACK,SET_VALUE,50` |
+| `GET_VALUE` | 現在の手動指令値を取得 | `VALUE,50` |
+| `SERVO_CONFIG,neutral_us,deadband_us` | 中立パルスとデッドバンドをRAM上で設定 | `ACK,SERVO_CONFIG,1500,90` |
+| `SERVO_STATUS` | 現在のサーボ設定を取得 | `SERVO_STATUS,neutral_us=1500,deadband_us=90` |
 
-Windows側で`pc_tcp_server.exe`を起動すると、LBR-127HLDの値をほかの
-テレメトリと一緒に2秒ごとに確認できます。
+速度指令は `-100` - `100` を、設定した中立値から 700 - 2300 us の範囲へ線形変換します。`0` は中立パルスです。`SERVO_CONFIG` の許容範囲は `neutral_us=1400..1600`、`deadband_us=0..200` で、再起動すると既定値 `1500,90` に戻ります。手動速度指令は実行中の姿勢制御を解除します。
 
-テレメトリを送信するたび、Pico Wの内蔵LEDが約200 ms点灯します。LEDはPico側の送信動作、PC画面の`Telemetry <- Pico:`表示はPC側の受信動作の確認に使えます。
+### 姿勢制御
 
-> 現在は動作検証用に、改行区切りの文字列をTCPで送受信しています。TCPでは送信単位と受信単位が必ず一致するわけではないため、実機機能へ拡張する際はメッセージ種別・連番・データ長・CRCを持つ通信プロトコルへ発展させます。
+| コマンド | 内容 |
+| --- | --- |
+| `ANGLE_RESET` | 現在の積分 yaw を 0° に設定 |
+| `SLEW,target_deg` | 原点に対する目標角へ最短方向で旋回（`-3600..3600`） |
+| `SLEW_REL,delta_deg` | 現在角から指定方向・指定量だけ旋回（`-360..360`） |
+| `SLEW_STATUS` | モード、異常、目標、誤差、角速度、指令などを取得 |
+| `SLEW_ABORT` | 旋回・保持を中止し、サーボ指令を 0 に設定 |
+
+`SLEW_REL_CAPTURE,<angle>` も旧ダッシュボードとの互換性のため相対旋回として受け付けますが、旋回後の自動撮影は行いません。
+
+旋回開始時は、IMU 校正済み、手動指令値が 0、推定ホイール回転数が 5 rpm 以下、カメラがアイドルである必要があります。角度誤差 3°以内かつ機体角速度 0.8 deg/s 以下が1秒継続すると `SLEW` から `HOLD` に移ります。IMU 異常、90秒のタイムアウト、または指令飽和が1.5秒継続すると `FAULT` になりサーボを停止します。
+
+調整コマンドは制御停止中だけ使用でき、値は再起動時に既定値へ戻ります。
+
+| コマンド | 引数の範囲 |
+| --- | --- |
+| `SLEW_CONFIG,angle_gain,rate_gain,wheel_gain,max_rate,max_wheel` | `0.05..2`, `0.1..5`, `0.1..10`, `0.5..30`, `10..90` |
+| `HOLD_CONFIG,integral_gain,max_integral_rate,integral_zone` | `0..0.5`, `0..5`, `1..45` |
+| `BREAKAWAY_CONFIG,min_accel,rate_threshold,angle_threshold,delay_ms` | `0..30`, `0.05..2`, `0.25..10`, `0..2000` |
+
+既定値と実機調整の手順は `pico_satellite_controller/SLEW_CAPTURE_IMPLEMENTATION.md` を参照してください。
+
+### カメラと太陽検出
+
+| コマンド | 内容 |
+| --- | --- |
+| `CAPTURE` | OV7675 の通常画像を1枚撮影 |
+| `CAPTURE_TEST` | カラーバーを1枚撮影 |
+| `SET_SUN_THRESHOLD,0..1023` | 自動撮影に必要な PD2 / PD3 の最低値を設定 |
+| `SET_SUN_TOLERANCE,0..1023` | PD2 と PD3 の許容差を設定 |
+| `GET_SUN_CONFIG` | 現在のしきい値と許容差を取得 |
+
+既定値は `threshold=570`、`tolerance=50` です。PD2 と PD3 がともにしきい値以上で、両者の差が許容値以内になった瞬間に1回だけ自動撮影します。その際、取得時の yaw を保持するため制御モードは `HOLD` になります。設定値は再起動すると既定値へ戻ります。
+
+現在の統合ファームウェアには `STREAM_START` / `STREAM_STOP` コマンドはありません。撮影は上記コマンド、Web 画面、または太陽検出条件から1枚ずつ要求します。
+
+不明な文字列は、初期の通信デモとの互換動作として `PICO_REPLY: <入力>` の形で返されます。
+
+## テレメトリ
+
+Pico は接続中、500 ms ごとに1行のテレメトリを送ります。送信成功時は Pico W の内蔵 LED が約200 ms 点灯します。IMU は core 1 で 200 Hz、姿勢制御は core 0 で 50 Hz、回転センサーは 500 Hz で処理します。
+
+```text
+TELEMETRY,wifi_mode=AP,uptime_s=12,temp_c=26.45,random=381,command_value=0,gyro_z_dps=1.25,gyro_z_angle_deg=45.30,roll_deg=0.42,pitch_deg=-0.18,attitude_calibrated=1,imu_samples=2400,imu_rejected=0,photodiode_adc=123|234|345|456,photoreflector_adc=512,wheel_rpm=36.50,control_mode=HOLD,control_fault=NONE,control_target_deg=45.00,control_error_deg=-0.30,control_rate_ref_dps=-0.11,control_wheel_command_percent=12.50,control_elapsed_ms=4200,control_settled_ms=1000
+```
+
+| フィールド | 内容 |
+| --- | --- |
+| `uptime_s` / `temp_c` / `random` | 稼働時間、RP2040 内部温度、通信確認用乱数 |
+| `command_value` | 手動ホイール指令値 |
+| `gyro_z_dps` / `gyro_z_angle_deg` | Z 軸角速度、原点からの非ラップ相対 yaw |
+| `roll_deg` / `pitch_deg` | 重力基準の傾斜角 |
+| `attitude_calibrated` | IMU バイアス校正状態 |
+| `imu_samples` / `imu_rejected` | IMU の処理済み・棄却サンプル数 |
+| `photodiode_adc` | MCP3008 CH0 - CH3 の10 bit ADC値 |
+| `photoreflector_adc` / `wheel_rpm` | CH4 の値、マーカー周期から求めた符号付き回転数 |
+| `control_mode` | `IDLE` / `SLEW` / `HOLD` / `ABORTED` / `FAULT` |
+| `control_fault` | `NONE` / `IMU` / `TIMEOUT` / `SATURATION` |
+| `control_target_deg` / `control_error_deg` | 制御目標角と角度誤差 |
+| `control_rate_ref_dps` | 外側ループの目標機体角速度 |
+| `control_wheel_command_percent` | 姿勢制御が算出したホイール指令 |
+| `control_elapsed_ms` / `control_settled_ms` | 制御経過時間、連続整定時間 |
+
+利用できないセンサー値は `NA` になります。PC ダッシュボードと CSV は現在、このうち稼働時間、温度、Gyro Z、相対 yaw、フォトダイオード、フォトリフレクタ、手動指令、Windows が取得した Wi-Fi 品質を保存・表示します。追加の姿勢・制御フィールドはコンソールの受信行で確認できます。
+
+## 画像転送と保存
+
+Pico は撮影後、次の ASCII ヘッダーと 38,400 byte の RGB565 データを同じ TCP 接続で送ります。
+
+```text
+FRAME,160,120,RGB565,38400,1234abcd
+<RGB565 binary data>
+```
+
+末尾の値は RGB565 データの CRC32 です。PC はサイズと CRC32 を検証し、24 bit BMP に変換して `pc_tcp_server.exe` と同じ場所の `captures/` に保存します。
+
+```text
+captures/camera_YYYYMMDD_HHMMSS_mmm.bmp
+```
+
+画像転送中は ACK、イベント、テレメトリを Pico 側のキューへ退避し、バイナリデータへの混入を防ぎます。転送中の再撮影要求には `ERROR,CAMERA_BUSY` が返ります。
+
+## CSV ログ
+
+実機モードでは Pico が接続するたびに、PC サーバーの作業ディレクトリへ新しい CSV を作成します。
+
+```text
+MMDDHHMM.csv
+MMDDHHMM_01.csv
+```
+
+受信したテレメトリ、PC コマンド、Pico 応答、接続イベント、カメライベントを接続セッション単位で自動保存します。CSV を Excel などで開いたままにすると更新できない場合があります。Web 画面の `Save CSV` からブラウザー側でも履歴を保存できます。
+
+## 安全上の注意と制約
+
+- ICM-42688-P は6軸 IMU で磁気センサーを持たないため、yaw は絶対方位ではなく相対角です。時間とともにドリフトします。
+- `SLEW_ABORT` や通信断はサーボ指令を中立へ戻しますが、機体やホイールを瞬時に物理停止させるものではありません。
+- 初回の自由回転試験では機体を拘束できる状態にし、低い指令・低い制御上限から確認してください。
+- USB シリアル出力は有効です。起動失敗やセンサー初期化状態の診断には Serial Monitor を使用できます。
+- 実機調整、制御則、姿勢推定の詳細は `pico_satellite_controller/ATTITUDE_ESTIMATION.md`、`pico_satellite_controller/SLEW_CAPTURE_IMPLEMENTATION.md`、`pico_satellite_controller/REACTION_WHEEL_ROTATION_RESEARCH.md` を参照してください。
+
+## テスト
+
+姿勢制御のソフトウェア回帰試験には Node.js を使用します。
+
+```powershell
+node pico_satellite_controller/tests/slew_sils.mjs
+```
+
+PC 側だけを確認するときはダミーモードを起動し、<http://localhost:8080> でテレメトリ、コマンド、CSV、カメラ表示を確認してください。
