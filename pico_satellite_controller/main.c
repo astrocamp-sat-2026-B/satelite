@@ -395,8 +395,8 @@ static bool start_slew(float requested_angle_deg, bool relative) {
         send_text(client_pcb, "ERROR,WHEEL_NOT_STOPPED\n");
         return false;
     }
-    if (relative && fabsf(requested_angle_deg) > 180.0f) {
-        send_text(client_pcb, "ERROR,RELATIVE_ANGLE,-180_TO_180\n");
+    if (relative && fabsf(requested_angle_deg) > 360.0f) {
+        send_text(client_pcb, "ERROR,RELATIVE_ANGLE,-360_TO_360\n");
         return false;
     }
     if (!relative && fabsf(requested_angle_deg) > 3600.0f) {
@@ -483,25 +483,29 @@ static void configure_hold(const char *arguments) {
 static void configure_breakaway(const char *arguments) {
     float minimum_accel;
     float rate_threshold;
+    float angle_threshold;
     unsigned long delay_ms;
     char extra;
     if (attitude_control_is_active(&attitude_control)) {
         send_text(client_pcb, "ERROR,SLEW_BUSY\n");
         return;
     }
-    if (sscanf(arguments, "%f,%f,%lu%c", &minimum_accel,
-               &rate_threshold, &delay_ms, &extra) != 3 ||
+    if (sscanf(arguments, "%f,%f,%f,%lu%c", &minimum_accel,
+               &rate_threshold, &angle_threshold, &delay_ms, &extra) != 4 ||
         !isfinite(minimum_accel) || !isfinite(rate_threshold) ||
+        !isfinite(angle_threshold) ||
         minimum_accel < 0.0f || minimum_accel > 30.0f ||
         rate_threshold < 0.05f || rate_threshold > 2.0f ||
+        angle_threshold < 0.25f || angle_threshold > 10.0f ||
         delay_ms > 2000u) {
         send_text(client_pcb,
-                  "ERROR,BREAKAWAY_CONFIG,min_accel=0..30,rate_threshold=0.05..2,delay_ms=0..2000\n");
+                  "ERROR,BREAKAWAY_CONFIG,min_accel=0..30,rate_threshold=0.05..2,angle_threshold=0.25..10,delay_ms=0..2000\n");
         return;
     }
 
     attitude_control.config.breakaway_min_accel_dps2 = minimum_accel;
     attitude_control.config.breakaway_rate_threshold_dps = rate_threshold;
+    attitude_control.config.breakaway_angle_threshold_deg = angle_threshold;
     attitude_control.config.breakaway_delay_ms = (uint32_t)delay_ms;
     send_text(client_pcb, "ACK,BREAKAWAY_CONFIG\n");
 }
@@ -886,8 +890,6 @@ int main(void) {
     while (true) {
         sample_wheel_sensor();
         update_attitude_control();
-        servo_update();
-
         // poll方式のWi-Fi/lwIP処理を進める。
         cyw43_arch_poll();
 

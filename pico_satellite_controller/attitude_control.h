@@ -28,6 +28,7 @@ typedef struct {
     float wheel_command_gain;
     float breakaway_min_accel_dps2;
     float breakaway_rate_threshold_dps;
+    float breakaway_angle_threshold_deg;
     float max_body_rate_dps;
     float max_wheel_command_percent;
     float settle_angle_deg;

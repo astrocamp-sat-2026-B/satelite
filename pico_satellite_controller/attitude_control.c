@@ -48,6 +48,7 @@ void attitude_control_default_config(attitude_control_config_t *config) {
     config->wheel_command_gain = 3.00f;
     config->breakaway_min_accel_dps2 = 8.0f;
     config->breakaway_rate_threshold_dps = 0.20f;
+    config->breakaway_angle_threshold_deg = 1.0f;
     config->max_body_rate_dps = 5.0f;
     config->max_wheel_command_percent = 70.0f;
     config->settle_angle_deg = 3.0f;
@@ -177,7 +178,8 @@ void attitude_control_update(attitude_control_t *control,
      * motion is detected so the normal rate loop performs braking/settling.
      */
     const bool rotation_still_required =
-        fabsf(status->angle_error_deg) > config->settle_angle_deg;
+        fabsf(status->angle_error_deg) >
+            config->breakaway_angle_threshold_deg;
     const bool body_is_stationary =
         fabsf(body_rate_dps) <= config->breakaway_rate_threshold_dps;
     if (rotation_still_required && body_is_stationary &&

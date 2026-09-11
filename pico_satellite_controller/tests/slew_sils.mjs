@@ -9,6 +9,7 @@ const config = {
   wheelCommandGain: 3.00,
   breakawayMinAccel: 8.0,
   breakawayRateThreshold: 0.20,
+  breakawayAngleThreshold: 1.0,
   breakawayDelay: 0.20,
   maxBodyRate: 5.0,
   maxWheelCommand: 70.0,
@@ -79,7 +80,8 @@ function simulate({
     );
     let bodyAccelerationRequest =
       config.rateGain * (rateReference - bodyRate);
-    const rotationStillRequired = Math.abs(error) > config.settleAngle;
+    const rotationStillRequired =
+      Math.abs(error) > config.breakawayAngleThreshold;
     const bodyIsStationary =
       Math.abs(bodyRate) <= config.breakawayRateThreshold;
     if (breakawayEnabled && rotationStillRequired && bodyIsStationary) {
@@ -215,13 +217,13 @@ passed += 2;
 // ordinary PI/rate loop takes substantially longer to build enough wheel
 // acceleration for the same plant.
 const smallStictionSlew = simulate({
-  target: 4,
+  target: 2,
   inertiaRatio: 0.03,
   viscousDrag: 0.02,
   staticFriction: 4.0,
 });
 const smallStictionSlewWithoutBoost = simulate({
-  target: 4,
+  target: 2,
   inertiaRatio: 0.03,
   viscousDrag: 0.02,
   staticFriction: 4.0,
